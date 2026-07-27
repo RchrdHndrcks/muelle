@@ -323,7 +323,10 @@ func TestConfiguredSortIsAppliedAtStartup(t *testing.T) {
 func TestChangingTheOrderRecordsIt(t *testing.T) {
 	app := loadedApp(t)
 	var saved config.Config
-	app.SetPreferenceWriter(func(change func(*config.Config)) { change(&saved) })
+	app.SetPreferenceWriter(func(change func(*config.Config)) error {
+		change(&saved)
+		return nil
+	})
 
 	press(app, runeKey('o')) // default -> cpu
 
@@ -344,5 +347,26 @@ func TestChangingTheOrderWithoutAWriterIsHarmless(t *testing.T) {
 
 	if app.sortKey == SortDefault {
 		t.Error("the ordering should still change in the session")
+	}
+}
+
+// Silently not saving is how a preference comes to look like it works until
+// the next launch.
+func TestAFailedSaveIsReported(t *testing.T) {
+	app := loadedApp(t)
+	app.SetPreferenceWriter(func(func(*config.Config)) error {
+		return errFake
+	})
+
+	press(app, runeKey('o'))
+
+	if !app.status.isError {
+		t.Errorf("got status %q, want the failure surfaced", app.status.text)
+	}
+	if !strings.Contains(app.status.text, "save") {
+		t.Errorf("got %q, want it to say the preference was not saved", app.status.text)
+	}
+	if app.sortKey == SortDefault {
+		t.Error("the ordering should still apply for this session")
 	}
 }

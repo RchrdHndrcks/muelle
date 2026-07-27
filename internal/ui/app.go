@@ -109,7 +109,7 @@ type App struct {
 	sortKey SortKey
 	// persist records a preference that should outlive the session. Nil
 	// when there is nowhere to write, as in the headless dump mode.
-	persist func(func(*config.Config))
+	persist func(func(*config.Config)) error
 
 	overlay *Overlay
 	status  status
@@ -201,16 +201,22 @@ func parseConfiguredSort(name string) SortKey {
 // Injected rather than built in, so this package needs to know nothing about
 // where configuration lives — and so the headless dump mode, which should
 // never write anything, simply does not provide one.
-func (a *App) SetPreferenceWriter(write func(func(*config.Config))) {
+func (a *App) SetPreferenceWriter(write func(func(*config.Config)) error) {
 	a.persist = write
 }
 
 // remember records a preference change, if there is anywhere to put it.
+//
+// A failure is reported rather than swallowed. Silently not saving is how a
+// preference comes to look like it works until the next launch, which is a
+// worse outcome than a line in the status bar.
 func (a *App) remember(change func(*config.Config)) {
 	if a.persist == nil {
 		return
 	}
-	a.persist(change)
+	if err := a.persist(change); err != nil {
+		a.setError("could not save preference: %v", err)
+	}
 }
 
 // event is anything the loop must react to besides a key press.
