@@ -52,6 +52,8 @@ const (
 	ModeInspect
 	// ModeHelp is the key reference.
 	ModeHelp
+	// ModeProcesses lists the processes inside a container.
+	ModeProcesses
 )
 
 // App holds all mutable state and the event loop.
@@ -116,6 +118,11 @@ type App struct {
 	inspectPager *Pager
 	inspectTitle string
 
+	// Process viewer state.
+	processes      docker.Processes
+	processesPager *Pager
+	processesTitle string
+
 	events   chan event
 	quit     chan struct{}
 	quitOnce sync.Once
@@ -142,21 +149,22 @@ const statusLifetime = 6 * time.Second
 // New creates an app bound to a daemon and a screen.
 func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *Runner) *App {
 	return &App{
-		config:        cfg,
-		docker:        client,
-		screen:        screen,
-		runner:        runner,
-		stats:         make(map[string]docker.Stat),
-		restartCounts: make(map[string]int),
-		logs:          NewLogBuffer(5000),
-		logPager:      NewPager(true),
-		inspectPager:  NewPager(false),
-		logWrap:       true,
-		logStamps:     false,
-		showSystem:    cfg.SystemPanel,
-		events:        make(chan event, 64),
-		quit:          make(chan struct{}),
-		dockerCLI:     DockerCLIAvailable(),
+		config:         cfg,
+		docker:         client,
+		screen:         screen,
+		runner:         runner,
+		stats:          make(map[string]docker.Stat),
+		restartCounts:  make(map[string]int),
+		logs:           NewLogBuffer(5000),
+		logPager:       NewPager(true),
+		inspectPager:   NewPager(false),
+		processesPager: NewPager(false),
+		logWrap:        true,
+		logStamps:      false,
+		showSystem:     cfg.SystemPanel,
+		events:         make(chan event, 64),
+		quit:           make(chan struct{}),
+		dockerCLI:      DockerCLIAvailable(),
 	}
 }
 
@@ -294,6 +302,8 @@ func (a *App) frame(width, height int) []string {
 		body = a.renderLogs(width, bodyHeight)
 	case ModeInspect:
 		body = a.renderInspect(width, bodyHeight)
+	case ModeProcesses:
+		body = a.renderProcesses(width, bodyHeight)
 	case ModeHelp:
 		body = a.renderHelp(width, bodyHeight)
 	default:

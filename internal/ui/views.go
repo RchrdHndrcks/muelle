@@ -382,12 +382,14 @@ func (a *App) contextHints() string {
 		return "f follow  w wrap  t timestamps  / filter  esc back  ? help"
 	case ModeInspect:
 		return "j/k scroll  g/G top/bottom  esc back"
+	case ModeProcesses:
+		return "j/k scroll  g/G top/bottom  esc back"
 	case ModeHelp:
 		return "esc back"
 	}
 	switch a.view {
 	case ViewContainers:
-		return "enter inspect  l logs  x exec  s start  t stop  r restart  D remove  a all  o sort  S system  / filter  ? help"
+		return "enter inspect  l logs  x exec  s start  t stop  r restart  D remove  T top  a all  o sort  S system  / filter  ? help"
 	case ViewCompose:
 		return "enter actions  l logs  u up  d down  r restart  / filter  ? help"
 	case ViewImages:
@@ -416,6 +418,8 @@ func (a *App) contextState() string {
 		parts = append(parts, a.logPager.ScrollInfo(a.logs.Len(), height-2))
 	case ModeInspect:
 		parts = append(parts, a.inspectTitle)
+	case ModeProcesses:
+		parts = append(parts, a.processSummary())
 	default:
 		if a.filter != "" {
 			parts = append(parts, "filter:"+a.filter)

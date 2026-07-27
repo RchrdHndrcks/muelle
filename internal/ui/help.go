@@ -38,6 +38,7 @@ var helpSections = []helpSection{
 		{"Enter, i", "inspect (full JSON)"},
 		{"l", "follow logs"},
 		{"x", "exec menu (database clients, shells)"},
+		{"T", "processes running inside (docker top)"},
 		{"e", "shell straight away (bash, falling back to sh)"},
 		{"s / t / r", "start / stop / restart"},
 		{"p", "pause or unpause"},
