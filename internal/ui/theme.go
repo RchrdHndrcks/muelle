@@ -1,6 +1,9 @@
 package ui
 
-import "github.com/RchrdHndrcks/muelle/internal/tui"
+import (
+	"github.com/RchrdHndrcks/muelle/internal/docker"
+	"github.com/RchrdHndrcks/muelle/internal/tui"
+)
 
 // Palette entries, as 256-colour indices. Sticking to the 256-colour cube
 // rather than truecolor keeps the UI legible over SSH to older terminals,
@@ -62,6 +65,36 @@ func projectStatusStyle(status string) tui.Style {
 		return tui.Foreground(colourRed)
 	default:
 		return tui.Foreground(colourGrey)
+	}
+}
+
+// healthStyle colours a healthcheck state.
+func healthStyle(health docker.Health) tui.Style {
+	switch health {
+	case docker.HealthHealthy:
+		return tui.Foreground(colourGreen)
+	case docker.HealthUnhealthy:
+		return tui.Foreground(colourRed)
+	case docker.HealthStarting:
+		return tui.Foreground(colourYellow)
+	default:
+		return tui.StyleNone
+	}
+}
+
+// healthGlyph marks a healthcheck state with a distinct character, not only a
+// colour. Colour alone would leave the distinction invisible under NO_COLOR
+// and to anyone who cannot separate red from green.
+func healthGlyph(health docker.Health) string {
+	switch health {
+	case docker.HealthHealthy:
+		return "✓"
+	case docker.HealthUnhealthy:
+		return "✗"
+	case docker.HealthStarting:
+		return "…"
+	default:
+		return ""
 	}
 }
 

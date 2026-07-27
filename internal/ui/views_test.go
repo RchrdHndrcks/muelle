@@ -1,0 +1,95 @@
+package ui
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/RchrdHndrcks/muelle/internal/docker"
+	"github.com/RchrdHndrcks/muelle/internal/tui"
+)
+
+// visibleWidthOf measures a rendered cell, ignoring styling.
+func visibleWidthOf(s string) int { return tui.VisibleWidth(s) }
+
+func TestStateCellMarksHealth(t *testing.T) {
+	app := newTestApp(t)
+
+	cases := map[string]string{
+		"Up 2 hours (healthy)":            "✓",
+		"Up 5 minutes (unhealthy)":        "✗",
+		"Up 3 seconds (health: starting)": "…",
+	}
+
+	for status, glyph := range cases {
+		cell := app.stateCell(docker.Container{State: "running", Status: status})
+		if !strings.Contains(cell, glyph) {
+			t.Errorf("status %q rendered %q, want the %q marker", status, cell, glyph)
+		}
+	}
+}
+
+// A container without a healthcheck must not gain a marker implying one
+// passed.
+func TestStateCellOmitsMarkerWithoutHealthcheck(t *testing.T) {
+	app := newTestApp(t)
+
+	cell := app.stateCell(docker.Container{State: "running", Status: "Up 8 weeks"})
+
+	for _, glyph := range []string{"✓", "✗", "…"} {
+		if strings.Contains(cell, glyph) {
+			t.Errorf("got %q, want no health marker when none is reported", cell)
+		}
+	}
+}
+
+// The markers must differ by character, not only colour, or the distinction
+// vanishes under NO_COLOR.
+func TestHealthMarkersAreDistinctWithoutColour(t *testing.T) {
+	app := newTestApp(t) // colour disabled
+
+	healthy := app.stateCell(docker.Container{State: "running", Status: "Up 1h (healthy)"})
+	unhealthy := app.stateCell(docker.Container{State: "running", Status: "Up 1h (unhealthy)"})
+
+	if healthy == unhealthy {
+		t.Errorf("both rendered as %q; the states must be distinguishable without colour", healthy)
+	}
+}
+
+func TestStateCellShowsRestartCount(t *testing.T) {
+	app := newTestApp(t)
+	app.restartCounts = map[string]int{"flapper": 12}
+
+	cell := app.stateCell(docker.Container{ID: "flapper", State: "restarting"})
+
+	if !strings.Contains(cell, "×12") {
+		t.Errorf("got %q, want the restart count shown", cell)
+	}
+}
+
+func TestStateCellOmitsZeroRestartCount(t *testing.T) {
+	app := newTestApp(t)
+	app.restartCounts = map[string]int{"steady": 0}
+
+	cell := app.stateCell(docker.Container{ID: "steady", State: "running"})
+
+	if strings.Contains(cell, "×") {
+		t.Errorf("got %q, want no restart marker at zero", cell)
+	}
+}
+
+// The state column must still fit its width once markers are appended.
+func TestStateCellFitsItsColumn(t *testing.T) {
+	app := newTestApp(t)
+	app.restartCounts = map[string]int{"x": 999}
+
+	cell := app.stateCell(docker.Container{
+		ID: "x", State: "restarting", Status: "Restarting (1) 2 seconds ago (unhealthy)",
+	})
+
+	if width := visibleWidthOf(cell); width > 13 {
+		t.Errorf("got %q at %d cells, want it to fit the 13-cell state column", cell, width)
+	}
+	if !strings.Contains(cell, "×99+") {
+		t.Errorf("got %q, want the count capped rather than truncated away", cell)
+	}
+}

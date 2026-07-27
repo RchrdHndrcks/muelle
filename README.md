@@ -131,6 +131,26 @@ so it refreshes once a minute rather than on every tick.
 The panel hides itself in the log and inspect viewers, and on a terminal too
 short to leave a usable list behind it.
 
+## Health and restart indicators
+
+The state column carries a healthcheck marker and, for containers that look
+unwell, how many times they have restarted:
+
+```
+engi-mysql-1     up ✓          healthcheck passing
+api-worker       up ✗×12       healthcheck failing, restarted 12 times
+queue-consumer   restart ×47   crash-looping
+web              up            no healthcheck defined
+```
+
+Markers differ by character as well as colour, so the distinction survives
+`NO_COLOR` and does not depend on telling red from green.
+
+Health comes from the container list, which appends it to the status text —
+free to read. Restart counts need one inspect call each, so they are fetched
+only for containers that already look unwell (restarting, unhealthy or dead).
+On a healthy host that list is empty and costs nothing.
+
 ## The exec menu
 
 This is the feature the tool exists for. Press `x` on a container and muelle

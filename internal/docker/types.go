@@ -132,7 +132,10 @@ type ContainerDetail struct {
 		Labels     map[string]string `json:"Labels"`
 		Tty        bool              `json:"Tty"`
 	} `json:"Config"`
-	HostConfig struct {
+	// RestartCount is how many times the daemon has restarted this
+	// container. It is only available from inspect, never from the list.
+	RestartCount int `json:"RestartCount"`
+	HostConfig   struct {
 		RestartPolicy struct {
 			Name string `json:"Name"`
 		} `json:"RestartPolicy"`

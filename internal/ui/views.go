@@ -2,9 +2,11 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/RchrdHndrcks/muelle/internal/docker"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
 )
 
@@ -72,7 +74,7 @@ func (a *App) renderList(width, height int) []string {
 func (a *App) containerColumns() []Column {
 	columns := []Column{
 		{Title: "name", Width: 22, Flex: true},
-		{Title: "state", Width: 8},
+		{Title: "state", Width: 13},
 	}
 	if a.config.Stats {
 		columns = append(columns,
@@ -111,7 +113,7 @@ func (a *App) renderContainers(width, height int) []string {
 
 		cells := []string{
 			container.Name(),
-			style(stateStyle(container.State), StateLabel(container.State)),
+			a.stateCell(container),
 		}
 		if a.config.Stats {
 			cells = append(cells,
@@ -132,6 +134,31 @@ func (a *App) renderContainers(width, height int) []string {
 		lines = append(lines, row)
 	}
 	return lines
+}
+
+// stateCell renders a container's state with its healthcheck marker and, for
+// a container that looks unwell, how many times it has restarted.
+//
+// A service crash-looping every thirty seconds otherwise renders identically
+// to one that has been up for a month: both say "up", because the daemon
+// reports the state of the current attempt.
+func (a *App) stateCell(container docker.Container) string {
+	style := a.screen.Style
+	cell := style(stateStyle(container.State), StateLabel(container.State))
+
+	if glyph := healthGlyph(container.Health()); glyph != "" {
+		cell += " " + style(healthStyle(container.Health()), glyph)
+	}
+	if count := a.restartCounts[container.ID]; count > 0 {
+		// Capped so the column has a fixed worst case: past a hundred
+		// restarts the exact figure tells you nothing the cap does not.
+		text := "×" + strconv.Itoa(count)
+		if count > 99 {
+			text = "×99+"
+		}
+		cell += style(styleWarning, text)
+	}
+	return cell
 }
 
 // statCell renders memory usage with its percentage colouring.
