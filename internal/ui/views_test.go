@@ -116,3 +116,26 @@ func TestStateCellFitsItsColumn(t *testing.T) {
 		t.Errorf("got %q, want the count capped rather than truncated away", capped)
 	}
 }
+
+// A stale install looks exactly like a bug that was never fixed. Naming the
+// running build is what tells the two apart.
+func TestHeaderNamesTheRunningBuild(t *testing.T) {
+	app := newTestApp(t)
+	app.SetBuild("830ab25")
+
+	header := app.renderHeader(160)
+
+	if !strings.Contains(header, "muelle 830ab25") {
+		t.Errorf("got %q, want the running build named", header)
+	}
+}
+
+func TestHeaderOmitsBuildWhenUnknown(t *testing.T) {
+	app := newTestApp(t)
+
+	header := app.renderHeader(160)
+
+	if strings.Contains(header, "  muelle ") {
+		t.Errorf("got %q, want no build suffix when none was set", header)
+	}
+}

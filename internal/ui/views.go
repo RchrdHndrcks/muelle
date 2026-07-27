@@ -50,6 +50,9 @@ func (a *App) headerSummary() string {
 	if a.version.Version != "" {
 		summary += "  docker " + a.version.Version
 	}
+	if a.build != "" {
+		summary += "  muelle " + a.build
+	}
 	return style(styleMuted, summary+" ")
 }
 

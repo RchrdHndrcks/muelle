@@ -142,6 +142,9 @@ type App struct {
 	// dockerCLI records whether exec and Compose actions are available.
 	dockerCLI bool
 	version   docker.Version
+	// build identifies the running binary, so a stale install is visible
+	// rather than looking like a bug that was never fixed.
+	build string
 }
 
 // status is a transient message shown in the status bar.
