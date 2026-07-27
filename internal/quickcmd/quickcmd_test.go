@@ -226,9 +226,52 @@ func TestSuggestAlwaysEndsWithShells(t *testing.T) {
 			t.Fatalf("Suggest(%q) returned %d commands, want at least the shells", image, len(commands))
 		}
 		last := commands[len(commands)-2:]
-		if argv(last[0]) != "bash" || argv(last[1]) != "sh" {
-			t.Errorf("Suggest(%q) ends with %v, want bash then sh", image, labels(last))
+		if last[0].Label != "shell" || argv(last[1]) != "sh" {
+			t.Errorf("Suggest(%q) ends with %v, want the detecting shell then plain sh",
+				image, labels(last))
 		}
+	}
+}
+
+// Most images carry no bash. Invoking it directly fails on them, and it was
+// the first entry offered — so it was the one people picked.
+func TestShellEntryNeverInvokesBashDirectly(t *testing.T) {
+	for _, command := range Suggest("redis:7-alpine", nil) {
+		if len(command.Argv) > 0 && command.Argv[0] == "bash" {
+			t.Errorf("%q runs bash directly, which fails on any image without it", command.Label)
+		}
+	}
+}
+
+// The decision belongs inside the container, where the answer is known.
+func TestShellEntryPrefersBashButFallsBack(t *testing.T) {
+	commands := Suggest("alpine:3.20", nil)
+	shell := commands[0]
+
+	if shell.Argv[0] != "sh" || shell.Argv[1] != "-c" {
+		t.Fatalf("got %v, want the probe run through sh", shell.Argv)
+	}
+	if !strings.Contains(shell.Argv[2], "bash") || !strings.Contains(shell.Argv[2], "exec sh") {
+		t.Errorf("got %q, want it to try bash and fall back to sh", shell.Argv[2])
+	}
+}
+
+// The probe is plumbing; showing it in the menu would be noise.
+func TestShellEntryReadsPlainlyInTheMenu(t *testing.T) {
+	shell := Suggest("alpine:3.20", nil)[0]
+
+	if got := shell.String(); got != "bash, or sh if unavailable" {
+		t.Errorf("got %q, want the intent rather than the shell incantation", got)
+	}
+}
+
+// An explicit sh stays available for when the shell itself is the question.
+func TestPlainShellRemainsAvailable(t *testing.T) {
+	commands := Suggest("alpine:3.20", nil)
+	plain := commands[len(commands)-1]
+
+	if argv(plain) != "sh" {
+		t.Errorf("got %q, want an unadorned sh as the last resort", argv(plain))
 	}
 }
 

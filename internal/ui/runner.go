@@ -75,12 +75,37 @@ func (r *Runner) Run(argv []string, pauseAfter bool) error {
 
 	if runErr != nil {
 		fmt.Fprintf(os.Stdout, "\r\n\x1b[31mcommand failed: %v\x1b[0m\r\n", runErr)
+		if hint := explain(runErr); hint != "" {
+			fmt.Fprintf(os.Stdout, "\x1b[2m%s\x1b[0m\r\n", hint)
+		}
 	}
 	if pauseAfter {
 		fmt.Fprint(os.Stdout, "\r\n\x1b[2mPress Enter to return to muelle\x1b[0m")
 		bufio.NewReader(os.Stdin).ReadString('\n')
 	}
 	return runErr
+}
+
+// notExecutable is the status docker returns when the thing asked for is not
+// runnable inside the container — most often because the image does not
+// contain it.
+const notExecutable = 126
+
+// explain turns an exit status into something worth reading.
+//
+// A container with no shell answers a request for one with an OCI runtime
+// error, which describes the mechanism rather than the situation. Images built
+// from scratch or on a distroless base contain no shell at all, and there is
+// nothing muelle can do about that — but saying so is considerably more use
+// than repeating the runtime's complaint.
+func explain(err error) string {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != notExecutable {
+		return ""
+	}
+	return "That command is not present in this container. " +
+		"Images built from scratch or on a distroless base carry no shell, " +
+		"in which case there is nothing to exec into — read the logs instead."
 }
 
 // ExecArgv builds the argv for running a command inside a container.
