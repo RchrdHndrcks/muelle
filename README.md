@@ -27,6 +27,28 @@ is two ioctls. Nothing else was needed.
 go install github.com/RchrdHndrcks/muelle/cmd/muelle@latest
 ```
 
+`go install` places the binary in `$(go env GOPATH)/bin` — usually `~/go/bin`.
+That is **not** the same directory as `/usr/local/go/bin`, which holds the Go
+toolchain and is the one most people already have on `PATH`. If the install
+succeeds but your shell reports `command not found: muelle`, that is the
+reason.
+
+Either put the directory on your `PATH` (this also reveals every other tool
+you have installed with `go install`):
+
+```sh
+echo 'export PATH="$PATH:$HOME/go/bin"' >> ~/.zshrc && exec zsh
+```
+
+Or install straight into a directory already on your `PATH`, with `GOBIN`:
+
+```sh
+GOBIN=/usr/local/bin go install github.com/RchrdHndrcks/muelle/cmd/muelle@latest
+```
+
+A build tool will not edit your shell configuration for you, so one of these
+steps is unavoidable the first time.
+
 Or build from source:
 
 ```sh
