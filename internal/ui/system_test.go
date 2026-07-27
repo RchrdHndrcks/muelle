@@ -75,17 +75,19 @@ func TestSystemPanelShowsMemoryAgainstCapacity(t *testing.T) {
 	}
 }
 
-// Reclaimable space is the actionable number on the disk line.
+// Reclaimable space is the actionable number on the disk line — but only if it
+// says where the space is. The count of unused images it used to print
+// described the wrong thing entirely once a build cache was involved.
 func TestSystemPanelHighlightsReclaimableSpace(t *testing.T) {
 	app := withMetrics(t)
 
-	panel := strings.Join(app.renderSystemPanel(120), "\n")
+	panel := strings.Join(app.renderSystemPanel(160), "\n")
 
 	if !strings.Contains(panel, "4.0GiB reclaimable") {
 		t.Errorf("panel should surface reclaimable space:\n%s", panel)
 	}
-	if !strings.Contains(panel, "7 unused images") {
-		t.Errorf("panel should say what is reclaimable:\n%s", panel)
+	if !strings.Contains(panel, "unused images") {
+		t.Errorf("panel should attribute the space to its source:\n%s", panel)
 	}
 }
 
@@ -263,3 +265,61 @@ var errFake = fakeError("boom")
 type fakeError string
 
 func (e fakeError) Error() string { return string(e) }
+
+// Answering "7GiB reclaimable, of what?" is the whole point of the line.
+func TestDiskLineAttributesReclaimableSpace(t *testing.T) {
+	app := withMetrics(t)
+	app.metrics.Disk = docker.DiskUsage{
+		ImagesSize:        5 << 30,
+		ImagesReclaimable: 180 << 20,
+		BuildCacheSize:    7 << 30,
+		VolumesSize:       8 << 30,
+		VolumeSizesKnown:  true,
+	}
+
+	line := app.renderDiskLine()
+
+	if !strings.Contains(line, "build cache") {
+		t.Errorf("got %q, want the build cache named as the source", line)
+	}
+	if !strings.Contains(line, "unused images") {
+		t.Errorf("got %q, want images named too", line)
+	}
+	// Build cache dwarfs the images here and must be named first, since a
+	// narrow terminal truncates the tail.
+	if strings.Index(line, "build cache") > strings.Index(line, "unused images") {
+		t.Errorf("got %q, want the largest source first", line)
+	}
+}
+
+// The state the user actually hit: images all cleared, and a large build cache
+// still reported. The line must not still say the space is in images.
+func TestDiskLineDoesNotBlameImagesForBuildCache(t *testing.T) {
+	app := withMetrics(t)
+	app.metrics.Disk = docker.DiskUsage{
+		ImagesSize:        5 << 30,
+		ImagesReclaimable: 0,
+		ImagesUnused:      0,
+		BuildCacheSize:    7 << 30,
+	}
+
+	line := app.renderDiskLine()
+
+	if strings.Contains(line, "unused images") {
+		t.Errorf("got %q, want no mention of images when none are reclaimable", line)
+	}
+	if !strings.Contains(line, "build cache") {
+		t.Errorf("got %q, want the build cache named", line)
+	}
+}
+
+func TestDiskLineSaysNothingWhenNothingToReclaim(t *testing.T) {
+	app := withMetrics(t)
+	app.metrics.Disk = docker.DiskUsage{ImagesSize: 5 << 30, VolumeSizesKnown: true}
+
+	line := app.renderDiskLine()
+
+	if strings.Contains(line, "reclaimable") {
+		t.Errorf("got %q, want no reclaimable claim when there is none", line)
+	}
+}

@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -180,5 +181,62 @@ func TestDiskUsageHandlesEmptyDaemon(t *testing.T) {
 	}
 	if usage.Total() != 0 || usage.Reclaimable() != 0 {
 		t.Errorf("got %+v, want zeroes on an empty daemon", usage)
+	}
+}
+
+// The total on its own is not actionable. Build cache is frequently the bulk
+// of it and appears nowhere in the interface, so attributing it to images
+// sends the reader off deleting images while the number refuses to move.
+func TestReclaimableSourcesNameWhereTheSpaceIs(t *testing.T) {
+	usage := DiskUsage{ImagesReclaimable: 180 << 20, BuildCacheSize: 7 << 30}
+
+	sources := usage.ReclaimableSources()
+
+	if len(sources) != 2 {
+		t.Fatalf("got %d sources, want both named: %+v", len(sources), sources)
+	}
+	if sources[0].Label != "build cache" {
+		t.Errorf("got %q first, want the largest contributor named first so a truncated line still shows it",
+			sources[0].Label)
+	}
+	if sources[0].Size != 7<<30 || sources[1].Size != 180<<20 {
+		t.Errorf("got %+v, want each size attributed to its own source", sources)
+	}
+}
+
+func TestReclaimableSourcesOmitEmptyContributors(t *testing.T) {
+	usage := DiskUsage{ImagesReclaimable: 100}
+
+	sources := usage.ReclaimableSources()
+
+	if len(sources) != 1 || sources[0].Label != "unused images" {
+		t.Errorf("got %+v, want only the contributor that has anything to give", sources)
+	}
+}
+
+func TestReclaimableSourcesEmptyWhenNothingToReclaim(t *testing.T) {
+	if got := (DiskUsage{}).ReclaimableSources(); len(got) != 0 {
+		t.Errorf("got %+v, want nothing named", got)
+	}
+}
+
+// Unreferenced volumes hold data that cannot be rebuilt and the default prune
+// leaves them alone, so counting them would promise space the obvious action
+// does not deliver.
+func TestReclaimableExcludesVolumes(t *testing.T) {
+	usage := DiskUsage{
+		ImagesReclaimable: 100,
+		BuildCacheSize:    200,
+		VolumesSize:       9000,
+		VolumesUnused:     3,
+	}
+
+	if got := usage.Reclaimable(); got != 300 {
+		t.Errorf("got %d, want only images and build cache counted", got)
+	}
+	for _, source := range usage.ReclaimableSources() {
+		if strings.Contains(source.Label, "volume") {
+			t.Errorf("volumes should not be offered as reclaimable: %+v", source)
+		}
 	}
 }
