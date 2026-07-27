@@ -72,6 +72,20 @@ func (e volumesLoaded) apply(a *App) {
 	a.volumes = e.volumes
 }
 
+// networksLoaded carries a network list refresh.
+type networksLoaded struct {
+	networks []docker.Network
+	err      error
+}
+
+func (e networksLoaded) apply(a *App) {
+	if e.err != nil {
+		a.setError("networks: %v", e.err)
+		return
+	}
+	a.networks = e.networks
+}
+
 // statsLoaded carries a round of resource samples.
 type statsLoaded struct{ stats map[string]docker.Stat }
 
@@ -290,6 +304,13 @@ func (a *App) refresh(ctx context.Context) {
 			volumes, err := a.docker.Volumes(fetchCtx)
 			a.post(volumesLoaded{volumes: volumes, err: err})
 		}()
+	case ViewNetworks:
+		go func() {
+			fetchCtx, cancel := context.WithTimeout(ctx, refreshTimeout)
+			defer cancel()
+			networks, err := a.docker.Networks(fetchCtx)
+			a.post(networksLoaded{networks: networks, err: err})
+		}()
 	}
 }
 
@@ -323,6 +344,9 @@ func (a *App) LoadOnce(ctx context.Context) error {
 	}
 	if volumes, err := a.docker.Volumes(ctx); err == nil {
 		a.volumes = volumes
+	}
+	if networks, err := a.docker.Networks(ctx); err == nil {
+		a.networks = networks
 	}
 	if version, err := a.docker.Ping(ctx); err == nil {
 		a.version = version
@@ -437,6 +461,21 @@ func (a *App) filteredImages() []docker.Image {
 	for _, i := range a.images {
 		if strings.Contains(strings.ToLower(i.Tag()), needle) {
 			matched = append(matched, i)
+		}
+	}
+	return matched
+}
+
+// filteredNetworks returns the networks matching the current filter.
+func (a *App) filteredNetworks() []docker.Network {
+	if a.filter == "" {
+		return a.networks
+	}
+	needle := strings.ToLower(a.filter)
+	matched := make([]docker.Network, 0, len(a.networks))
+	for _, n := range a.networks {
+		if strings.Contains(strings.ToLower(n.Name+" "+n.Driver+" "+n.Project()), needle) {
+			matched = append(matched, n)
 		}
 	}
 	return matched

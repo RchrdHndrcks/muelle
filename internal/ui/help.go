@@ -24,7 +24,7 @@ var helpSections = []helpSection{
 		{"j / k, ↓ / ↑", "move selection"},
 		{"g / G", "jump to first / last"},
 		{"Ctrl-d / Ctrl-u", "half page down / up"},
-		{"1 2 3 4", "switch to containers / compose / images / volumes"},
+		{"1 2 3 4 5", "containers / compose / images / volumes / networks"},
 		{"Tab, → / ←", "cycle views"},
 		{"/", "filter the list"},
 		{"Esc", "clear filter, or leave the current view"},
@@ -54,7 +54,7 @@ var helpSections = []helpSection{
 		{"r", "restart"},
 		{"l", "follow logs for every service at once"},
 	}},
-	{"Images and volumes", []helpEntry{
+	{"Images, volumes, networks", []helpEntry{
 		{"D", "remove the selected item"},
 		{"P", "prune unused items"},
 	}},
