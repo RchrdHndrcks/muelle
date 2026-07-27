@@ -179,10 +179,20 @@ func interactive(ctx context.Context, cfg config.Config, client *docker.Client, 
 	}
 	defer screen.Leave()
 
+	keys := tui.NewTerminalKeyReader(tui.StdinFd)
+	defer keys.Stop()
+
 	runner := &ui.Runner{
 		// Handing the terminal to a child means undoing everything the
 		// TUI set up, then putting it back exactly as it was.
+		//
+		// Releasing the keyboard comes first and matters most. A reader
+		// left parked in read(2) goes on competing for input the child now
+		// owns: an exec session loses keystrokes to the TUI, and the
+		// "press enter to continue" that follows never sees its newline,
+		// because the parked reader consumes it first.
 		Suspend: func() error {
+			keys.Pause()
 			if err := screen.Leave(); err != nil {
 				return err
 			}
@@ -198,7 +208,11 @@ func interactive(ctx context.Context, cfg config.Config, client *docker.Client, 
 			// it, so re-measure rather than trusting the old size.
 			width, height := tui.SizeOrDefault(tui.StdoutFd)
 			screen.Resize(width, height)
-			return screen.Enter()
+			if err := screen.Enter(); err != nil {
+				return err
+			}
+			keys.Resume()
+			return nil
 		},
 	}
 
@@ -206,7 +220,6 @@ func interactive(ctx context.Context, cfg config.Config, client *docker.Client, 
 	app.SetShowAll(all)
 	app.SetView(view)
 
-	keys := tui.ReadKeys(os.Stdin)
 	resize := watchResize(ctx)
 
 	defer func() {
@@ -220,7 +233,7 @@ func interactive(ctx context.Context, cfg config.Config, client *docker.Client, 
 		}
 	}()
 
-	return app.Run(ctx, keys, resize)
+	return app.Run(ctx, keys.Keys(), resize)
 }
 
 // watchResize converts SIGWINCH into a channel the event loop can select on.
