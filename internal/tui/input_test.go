@@ -2,7 +2,8 @@ package tui
 
 import (
 	"io"
-	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -137,43 +138,226 @@ func TestDecodeKeyHandlesBatchedInput(t *testing.T) {
 	}
 }
 
-func TestReadKeysStreamsAndClosesOnEOF(t *testing.T) {
-	keys := ReadKeys(strings.NewReader("ab\x1b[A"))
+// readerFromScript feeds pre-canned reads, then blocks like a terminal with
+// nothing to say — returning no bytes and no error, the way a timed-out read
+// behaves.
+func readerFromScript(chunks ...string) (func([]byte) (int, error), chan struct{}) {
+	index := 0
+	gate := make(chan struct{})
+	return func(p []byte) (int, error) {
+		if index < len(chunks) {
+			n := copy(p, chunks[index])
+			index++
+			return n, nil
+		}
+		// Idle: behave like a read that timed out.
+		select {
+		case <-gate:
+		case <-time.After(5 * time.Millisecond):
+		}
+		return 0, nil
+	}, gate
+}
+
+func TestKeyReaderStreamsDecodedKeys(t *testing.T) {
+	read, _ := readerFromScript("ab\x1b[A")
+	reader := NewKeyReader(read)
+	defer reader.Stop()
 
 	var got []Key
 	timeout := time.After(2 * time.Second)
-	for {
+	for len(got) < 3 {
 		select {
-		case key, ok := <-keys:
-			if !ok {
-				if len(got) != 3 {
-					t.Fatalf("got %d keys, want 3: %+v", len(got), got)
-				}
-				if got[2].Type != KeyUp {
-					t.Errorf("got %v, want Up last", got[2].Type)
-				}
-				return
-			}
+		case key := <-reader.Keys():
 			got = append(got, key)
 		case <-timeout:
-			t.Fatal("timed out waiting for keys")
+			t.Fatalf("timed out after %d keys", len(got))
 		}
+	}
+
+	if !got[0].IsRune('a') || !got[1].IsRune('b') || got[2].Type != KeyUp {
+		t.Errorf("got %+v, want a, b, Up", got)
 	}
 }
 
-func TestReadKeysClosesChannelWhenReaderFails(t *testing.T) {
-	keys := ReadKeys(failingReader{})
+// The reason this type exists: a child process cannot share the terminal, so
+// Pause must guarantee the reader is not in a read before it returns.
+func TestPauseStopsConsumingInput(t *testing.T) {
+	var (
+		mu    sync.Mutex
+		reads int
+	)
+	reader := NewKeyReader(func(p []byte) (int, error) {
+		mu.Lock()
+		reads++
+		mu.Unlock()
+		time.Sleep(2 * time.Millisecond)
+		return 0, nil
+	})
+	defer reader.Stop()
+
+	// Let it get going, then stand it down.
+	time.Sleep(30 * time.Millisecond)
+	reader.Pause()
+
+	mu.Lock()
+	atPause := reads
+	mu.Unlock()
+
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	afterPause := reads
+	mu.Unlock()
+
+	if afterPause != atPause {
+		t.Errorf("reader performed %d further reads while paused; the child no longer has the terminal to itself",
+			afterPause-atPause)
+	}
+}
+
+func TestResumeTakesTheTerminalBack(t *testing.T) {
+	read, _ := readerFromScript("x")
+	reader := NewKeyReader(read)
+	defer reader.Stop()
+
+	reader.Pause()
+	reader.Resume()
 
 	select {
-	case _, ok := <-keys:
-		if ok {
+	case key := <-reader.Keys():
+		if !key.IsRune('x') {
+			t.Errorf("got %+v, want the key delivered after resuming", key)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no keys after Resume; the reader did not take the terminal back")
+	}
+}
+
+// Suspend and Resume are wired to terminal handover, which can be re-entered;
+// neither call should deadlock or double-send.
+func TestPauseAndResumeAreIdempotent(t *testing.T) {
+	read, _ := readerFromScript()
+	reader := NewKeyReader(read)
+	defer reader.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		reader.Resume() // never paused
+		reader.Pause()
+		reader.Pause() // already paused
+		reader.Resume()
+		reader.Resume() // already resumed
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Pause/Resume deadlocked when called out of order")
+	}
+}
+
+// A half-read escape sequence must not survive the handover: by the time the
+// terminal comes back it is stale, and decoding it against whatever arrives
+// next would invent a keypress the user never made.
+func TestPauseDiscardsPartialSequence(t *testing.T) {
+	chunks := []string{"\x1b["} // the start of an arrow key, never finished
+	index := 0
+	resumed := make(chan struct{})
+	reader := NewKeyReader(func(p []byte) (int, error) {
+		if index < len(chunks) {
+			n := copy(p, chunks[index])
+			index++
+			return n, nil
+		}
+		select {
+		case <-resumed:
+			n := copy(p, "z")
+			return n, nil
+		default:
+		}
+		time.Sleep(2 * time.Millisecond)
+		return 0, nil
+	})
+	defer reader.Stop()
+
+	time.Sleep(30 * time.Millisecond)
+	reader.Pause()
+	reader.Resume()
+	close(resumed)
+
+	select {
+	case key := <-reader.Keys():
+		if !key.IsRune('z') {
+			t.Errorf("got %+v, want the stale sequence dropped and z delivered", key)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no key after resuming")
+	}
+}
+
+func TestStopClosesTheChannel(t *testing.T) {
+	read, _ := readerFromScript()
+	reader := NewKeyReader(read)
+
+	reader.Stop()
+
+	select {
+	case _, open := <-reader.Keys():
+		if open {
+			t.Error("expected no further keys after Stop")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the key channel was not closed by Stop")
+	}
+}
+
+func TestStopIsSafeToCallTwice(t *testing.T) {
+	read, _ := readerFromScript()
+	reader := NewKeyReader(read)
+
+	reader.Stop()
+	reader.Stop()
+}
+
+// A read interrupted by a signal has lost nothing and should simply be retried;
+// treating it as fatal would kill the keyboard on every window resize.
+func TestReaderSurvivesInterruptedReads(t *testing.T) {
+	calls := 0
+	reader := NewKeyReader(func(p []byte) (int, error) {
+		calls++
+		switch calls {
+		case 1:
+			return 0, syscall.EINTR
+		case 2:
+			return copy(p, "k"), nil
+		}
+		time.Sleep(2 * time.Millisecond)
+		return 0, nil
+	})
+	defer reader.Stop()
+
+	select {
+	case key := <-reader.Keys():
+		if !key.IsRune('k') {
+			t.Errorf("got %+v, want k", key)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the reader gave up after an interrupted read")
+	}
+}
+
+// A genuine read error ends the reader rather than spinning on it.
+func TestReaderStopsOnReadError(t *testing.T) {
+	reader := NewKeyReader(func([]byte) (int, error) { return 0, io.ErrUnexpectedEOF })
+
+	select {
+	case _, open := <-reader.Keys():
+		if open {
 			t.Error("expected no keys from a failing reader")
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("channel was not closed after a read error")
+		t.Fatal("the channel was not closed after a read error")
 	}
 }
-
-type failingReader struct{}
-
-func (failingReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }

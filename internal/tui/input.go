@@ -1,7 +1,11 @@
 package tui
 
 import (
-	"io"
+	"errors"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
 	"unicode/utf8"
 )
 
@@ -217,39 +221,195 @@ func leadingNumber(params string) int {
 	return value
 }
 
-// ReadKeys decodes key presses from r and sends them on the returned channel
-// until r reports an error, at which point the channel is closed.
+// KeyReader decodes key presses from the terminal and delivers them on a
+// channel.
 //
-// This runs on its own goroutine so a blocking read never stalls the event
-// loop: in raw mode read(2) parks until a byte arrives, which could be
-// minutes.
-func ReadKeys(r io.Reader) <-chan Key {
-	keys := make(chan Key, 16)
-	go func() {
-		defer close(keys)
-		buf := make([]byte, 0, 256)
-		chunk := make([]byte, 256)
-		for {
-			n, err := r.Read(chunk)
-			if n > 0 {
-				buf = append(buf, chunk[:n]...)
-				for len(buf) > 0 {
-					key, consumed := DecodeKey(buf)
-					if consumed == 0 {
-						// Partial sequence: keep it and wait
-						// for the remainder.
-						break
-					}
-					buf = buf[consumed:]
-					if key.Type != KeyUnknown {
-						keys <- key
-					}
-				}
+// It can be asked to release the terminal so a child process can own it, which
+// is the whole reason it exists as a type rather than a goroutine. Two readers
+// on one terminal split the input between them: an exec session loses
+// keystrokes to the TUI, and anything the TUI itself tries to read afterwards
+// blocks forever behind the reader that was already parked in read(2).
+type KeyReader struct {
+	// read fills p from the terminal, returning (0, nil) when the read
+	// timed out with nothing available. Injectable so the handover can be
+	// tested without a terminal.
+	read func(p []byte) (int, error)
+
+	keys chan Key
+	stop chan struct{}
+	// wake nudges a stood-down reader back to work.
+	wake chan struct{}
+	// parked is how the reader reports it is out of the terminal.
+	parked chan struct{}
+	// standDown is read before every read, so the reader notices without
+	// having to be blocked on a channel.
+	standDown atomic.Bool
+
+	mu     sync.Mutex
+	paused bool
+	once   sync.Once
+}
+
+// pauseGrace bounds how long Pause waits for the reader to confirm it has
+// stood down.
+//
+// A terminal in raw mode returns from read within a tenth of a second, so the
+// confirmation is normally immediate. If it does not come — a child left the
+// terminal in a mode where reads block, say — handing over regardless costs at
+// worst one stolen keystroke, while waiting would hang the application. This
+// code exists to remove a hang; it must not be able to cause one.
+const pauseGrace = 500 * time.Millisecond
+
+// NewKeyReader starts decoding key presses read by the given function.
+//
+// read must not block indefinitely: the reader can only notice a request to
+// stand down between reads. MakeRaw configures the terminal so reads time out
+// after a tenth of a second.
+func NewKeyReader(read func(p []byte) (int, error)) *KeyReader {
+	r := &KeyReader{
+		read:   read,
+		keys:   make(chan Key, 16),
+		stop:   make(chan struct{}),
+		wake:   make(chan struct{}, 1),
+		parked: make(chan struct{}, 1),
+	}
+	go r.loop()
+	return r
+}
+
+// NewTerminalKeyReader reads key presses from a terminal file descriptor.
+//
+// It reads through syscall rather than os.File because a read that times out
+// with no input returns zero bytes, which os.File reports as io.EOF —
+// indistinguishable from the terminal actually closing.
+func NewTerminalKeyReader(fd uintptr) *KeyReader {
+	return NewKeyReader(func(p []byte) (int, error) {
+		return syscall.Read(int(fd), p)
+	})
+}
+
+// Keys returns the channel key presses arrive on. It is closed when the reader
+// stops.
+func (r *KeyReader) Keys() <-chan Key { return r.keys }
+
+// Pause releases the terminal and returns once the reader is guaranteed not to
+// be reading, so the caller can hand stdin to a child process.
+//
+// Calling it twice without an intervening Resume does nothing.
+func (r *KeyReader) Pause() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.paused {
+		return
+	}
+
+	// Clear any signal left over from a previous cycle, so what we wait for
+	// below is this stand-down and not the last one.
+	drain(r.parked)
+	drain(r.wake)
+
+	r.standDown.Store(true)
+	r.paused = true
+
+	select {
+	case <-r.parked:
+	case <-r.stop:
+	case <-time.After(pauseGrace):
+		// Proceed anyway; see pauseGrace.
+	}
+}
+
+// Resume takes the terminal back after a Pause.
+func (r *KeyReader) Resume() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.paused {
+		return
+	}
+	r.standDown.Store(false)
+	// Buffered and non-blocking: the reader may not have parked yet, in
+	// which case it will see the flag rather than the signal.
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
+	r.paused = false
+}
+
+// drain empties a one-slot signal channel.
+func drain(c chan struct{}) {
+	select {
+	case <-c:
+	default:
+	}
+}
+
+// Stop ends the reader.
+func (r *KeyReader) Stop() {
+	r.once.Do(func() { close(r.stop) })
+}
+
+// loop reads and decodes until stopped.
+func (r *KeyReader) loop() {
+	defer close(r.keys)
+
+	buf := make([]byte, 0, 256)
+	chunk := make([]byte, 256)
+
+	for {
+		select {
+		case <-r.stop:
+			return
+		default:
+		}
+
+		if r.standDown.Load() {
+			// Drop any half-read escape sequence: by the time the
+			// terminal comes back it will be stale, and decoding it
+			// against whatever arrives next would invent a keypress.
+			buf = buf[:0]
+			// Report that the terminal is free. Non-blocking, so a
+			// Pause that already gave up does not wedge the reader.
+			select {
+			case r.parked <- struct{}{}:
+			default:
 			}
-			if err != nil {
+			select {
+			case <-r.wake:
+			case <-r.stop:
 				return
 			}
+			continue
 		}
-	}()
-	return keys
+
+		n, err := r.read(chunk)
+		if n > 0 {
+			buf = append(buf, chunk[:n]...)
+			for len(buf) > 0 {
+				key, consumed := DecodeKey(buf)
+				if consumed == 0 {
+					// Partial sequence: keep it and wait for
+					// the remainder.
+					break
+				}
+				buf = buf[consumed:]
+				if key.Type == KeyUnknown {
+					continue
+				}
+				select {
+				case r.keys <- key:
+				case <-r.stop:
+					return
+				}
+			}
+		}
+		if err != nil {
+			if errors.Is(err, syscall.EINTR) {
+				// A signal interrupted the read; nothing was
+				// lost, so simply read again.
+				continue
+			}
+			return
+		}
+	}
 }

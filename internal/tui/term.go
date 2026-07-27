@@ -48,10 +48,18 @@ func MakeRaw(fd uintptr) (*State, error) {
 		syscall.ISIG | syscall.IEXTEN
 	termios.Cflag &^= syscall.CSIZE | syscall.PARENB
 	termios.Cflag |= syscall.CS8
-	// Block until at least one byte is available, with no inter-byte
-	// timer: the input goroutine parks in read(2) rather than spinning.
-	termios.Cc[syscall.VMIN] = 1
-	termios.Cc[syscall.VTIME] = 0
+	// Return from read(2) after a tenth of a second even with no input,
+	// rather than blocking indefinitely.
+	//
+	// A blocking read cannot be interrupted, which matters because the
+	// terminal has to be handed over whole to a child process — an exec
+	// session, a compose command. A reader parked in read(2) keeps
+	// competing for input the child now owns, stealing its keystrokes and
+	// deadlocking anything else that tries to read. Timing out lets the
+	// reader notice it has been asked to stand down. The cost is a wakeup
+	// ten times a second doing nothing.
+	termios.Cc[syscall.VMIN] = 0
+	termios.Cc[syscall.VTIME] = 1
 
 	if err := ioctl(fd, ioctlWriteTermios, unsafe.Pointer(&termios)); err != nil {
 		return nil, fmt.Errorf("tui: apply raw mode: %w", err)
