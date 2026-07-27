@@ -33,6 +33,8 @@ type Config struct {
 	// Colour enables styled output. NO_COLOR in the environment overrides
 	// this to false.
 	Colour bool `json:"colour"`
+	// SystemPanel shows the host metrics summary beneath the list.
+	SystemPanel bool `json:"system_panel"`
 }
 
 // Default returns the configuration used when no file exists.
@@ -44,6 +46,7 @@ func Default() Config {
 		Stats:          true,
 		StopTimeout:    10,
 		Colour:         true,
+		SystemPanel:    true,
 	}
 }
 

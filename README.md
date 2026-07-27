@@ -55,7 +55,7 @@ Press `?` in the app for the full reference.
 
 | Key | Action |
 |---|---|
-| `1` `2` `3` `4`, `Tab` | switch between containers, compose, images, volumes |
+| `1` `2` `3` `4`, `Tab`, `←` `→` | switch between containers, compose, images, volumes |
 | `j` `k`, `↓` `↑` | move selection |
 | `g` `G` | first / last |
 | `Ctrl-d` `Ctrl-u` | half page down / up |
@@ -70,6 +70,7 @@ Press `?` in the app for the full reference.
 | `D` | remove |
 | `a` | include stopped containers |
 | `P` | prune (images and volumes views) |
+| `S` | toggle the host metrics panel |
 | `Ctrl-r` | refresh now |
 | `q`, `Ctrl-c` | quit |
 
@@ -78,6 +79,35 @@ a stray `Enter` — it wants an explicit `y`.
 
 In the log viewer: `f` follow, `w` wrap, `t` timestamps, `/` filter, `c` clear.
 Scrolling up pauses follow; scrolling back to the bottom resumes it.
+
+## Host metrics
+
+A summary of the machine the daemon runs on sits beneath the list, toggled
+with `S`:
+
+```
+────────────────────────────────────────────────────────────────────────────
+ colima · Ubuntu 24.04.1 LTS · linux/aarch64 · docker 27.4.0
+ CPU  [█░░░░░░░░░░░░░░░░░░░░░]  1.3% of 2 cores    2 running · 30 stopped
+ MEM  [████████████░░░░░░░░░░]  1.1GiB / 1.9GiB    76 images · 75 volumes
+ DISK images 10.2GiB · volumes 2.0GiB   7.9GiB reclaimable (17 unused images)
+```
+
+With Docker Desktop or Colima this describes the **VM**, which is the boundary
+that actually constrains the containers.
+
+CPU and memory are the **sum across running containers**, not host-wide
+utilisation — the Docker API reports the host's capacity but never its usage,
+so anything running outside Docker is invisible here. The figures are labelled
+accordingly rather than presented as a claim the data cannot support.
+
+Disk figures come from the same source as `docker system df`. Image size is
+the deduplicated layer total, not the sum of image sizes, which double-counts
+every shared base layer. That endpoint walks the storage driver and is slow,
+so it refreshes once a minute rather than on every tick.
+
+The panel hides itself in the log and inspect viewers, and on a terminal too
+short to leave a usable list behind it.
 
 ## The exec menu
 

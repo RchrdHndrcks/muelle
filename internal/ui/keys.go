@@ -58,13 +58,23 @@ func (a *App) handleGlobalKey(ctx context.Context, key tui.Key) {
 		a.Stop()
 	case key.IsRune('?'):
 		a.mode = ModeHelp
+	case key.IsRune('S'):
+		a.showSystem = !a.showSystem
+		if a.showSystem {
+			// Nothing has been measured while it was hidden, so fetch
+			// immediately rather than leaving an empty panel until the
+			// next tick.
+			a.refreshing = false
+			a.refresh(ctx)
+		}
+		a.setStatus("system panel %s", onOff(a.showSystem))
 	case key.Type == tui.KeyCtrlR:
 		a.refreshing = false
 		a.refresh(ctx)
 		a.setStatus("refreshing")
-	case key.Type == tui.KeyTab:
+	case key.Type == tui.KeyTab, key.Type == tui.KeyRight:
 		a.switchView((a.view + 1) % viewCount)
-	case key.Type == tui.KeyShiftTab:
+	case key.Type == tui.KeyShiftTab, key.Type == tui.KeyLeft:
 		a.switchView((a.view + viewCount - 1) % viewCount)
 	case key.IsRune('1'):
 		a.switchView(ViewContainers)

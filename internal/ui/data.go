@@ -13,6 +13,15 @@ import (
 // not leave the list stale forever with no indication why.
 const refreshTimeout = 20 * time.Second
 
+// diskUsageInterval is how often /system/df is measured. That endpoint walks
+// the storage driver and can take seconds on a host with many layers, so it
+// runs far less often than the container list — disk totals move slowly
+// enough that a stale reading costs nothing.
+const diskUsageInterval = 60 * time.Second
+
+// diskUsageTimeout is generous for the same reason.
+const diskUsageTimeout = 90 * time.Second
+
 // containersLoaded carries the result of a container list refresh.
 type containersLoaded struct {
 	containers []docker.Container
@@ -66,7 +75,54 @@ func (e volumesLoaded) apply(a *App) {
 // statsLoaded carries a round of resource samples.
 type statsLoaded struct{ stats map[string]docker.Stat }
 
-func (e statsLoaded) apply(a *App) { a.stats = e.stats }
+func (e statsLoaded) apply(a *App) {
+	a.stats = e.stats
+
+	// Aggregate for the host panel. Docker publishes no host-level
+	// utilisation, so the sum across containers is the closest honest
+	// figure, and the panel labels it as such.
+	var (
+		cpu float64
+		mem uint64
+	)
+	for _, stat := range e.stats {
+		cpu += stat.CPUPercent
+		mem += stat.MemUsage
+	}
+	a.metrics.CPUPercent = cpu
+	a.metrics.MemBytes = mem
+}
+
+// hostInfoLoaded carries a refresh of the daemon's host information.
+type hostInfoLoaded struct {
+	info docker.Info
+	err  error
+}
+
+func (e hostInfoLoaded) apply(a *App) {
+	if e.err != nil {
+		return
+	}
+	a.metrics.Info = e.info
+}
+
+// diskUsageLoaded carries a disk usage measurement.
+type diskUsageLoaded struct {
+	usage docker.DiskUsage
+	err   error
+}
+
+func (e diskUsageLoaded) apply(a *App) {
+	a.measuringDisk = false
+	if e.err != nil {
+		// Leave the previous measurement on screen and try again on the
+		// next cycle rather than blanking the line.
+		return
+	}
+	a.metrics.Disk = e.usage
+	a.metrics.DiskKnown = true
+	a.diskMeasuredAt = time.Now()
+}
 
 // actionDone reports the outcome of a lifecycle action.
 type actionDone struct {
@@ -182,6 +238,24 @@ func (a *App) refresh(ctx context.Context) {
 		}
 	}()
 
+	if a.showSystem {
+		go func() {
+			fetchCtx, cancel := context.WithTimeout(ctx, refreshTimeout)
+			defer cancel()
+			info, err := a.docker.SystemInfo(fetchCtx)
+			a.post(hostInfoLoaded{info: info, err: err})
+		}()
+		if time.Since(a.diskMeasuredAt) > diskUsageInterval && !a.measuringDisk {
+			a.measuringDisk = true
+			go func() {
+				fetchCtx, cancel := context.WithTimeout(ctx, diskUsageTimeout)
+				defer cancel()
+				usage, err := a.docker.DiskUsage(fetchCtx)
+				a.post(diskUsageLoaded{usage: usage, err: err})
+			}()
+		}
+	}
+
 	switch a.view {
 	case ViewImages:
 		go func() {
@@ -242,7 +316,16 @@ func (a *App) LoadOnce(ctx context.Context) error {
 			}
 		}
 		if len(running) > 0 {
-			a.stats = a.docker.StatsFor(ctx, running)
+			statsLoaded{stats: a.docker.StatsFor(ctx, running)}.apply(a)
+		}
+	}
+	if a.showSystem {
+		if info, err := a.docker.SystemInfo(ctx); err == nil {
+			a.metrics.Info = info
+		}
+		if usage, err := a.docker.DiskUsage(ctx); err == nil {
+			a.metrics.Disk = usage
+			a.metrics.DiskKnown = true
 		}
 	}
 	return nil
