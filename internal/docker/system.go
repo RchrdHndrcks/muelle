@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"sort"
 )
 
 // Info is the subset of /info describing the host the daemon runs on.
@@ -69,10 +70,40 @@ func (d DiskUsage) Total() int64 {
 	return d.ImagesSize + d.ContainersSize + d.VolumesSize + d.BuildCacheSize
 }
 
-// Reclaimable returns roughly how much a full prune would free: unused images,
-// unreferenced volumes and the whole build cache.
+// Reclaimable returns how much the default prune would free: images no
+// container references, plus the whole build cache.
+//
+// Unreferenced volumes are deliberately excluded. They hold data that cannot
+// be rebuilt, prune leaves them alone unless explicitly asked, and counting
+// them here would promise space that the obvious action does not deliver.
 func (d DiskUsage) Reclaimable() int64 {
 	return d.ImagesReclaimable + d.BuildCacheSize
+}
+
+// ReclaimableSource is one contributor to the reclaimable total.
+type ReclaimableSource struct {
+	Label string
+	Size  int64
+}
+
+// ReclaimableSources breaks the reclaimable total down by where the space
+// actually sits, largest first.
+//
+// The total on its own is not actionable: build cache is frequently the bulk
+// of it and lives nowhere in the interface, so a figure attributed to images
+// sends the reader to delete images and wonder why the number does not move.
+// Largest first so that a truncated line still names the thing worth doing
+// something about.
+func (d DiskUsage) ReclaimableSources() []ReclaimableSource {
+	var sources []ReclaimableSource
+	if d.BuildCacheSize > 0 {
+		sources = append(sources, ReclaimableSource{"build cache", d.BuildCacheSize})
+	}
+	if d.ImagesReclaimable > 0 {
+		sources = append(sources, ReclaimableSource{"unused images", d.ImagesReclaimable})
+	}
+	sort.Slice(sources, func(i, j int) bool { return sources[i].Size > sources[j].Size })
+	return sources
 }
 
 // diskUsagePayload mirrors the /system/df response.

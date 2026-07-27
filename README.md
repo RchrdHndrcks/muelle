@@ -118,6 +118,10 @@ with `S`:
 With Docker Desktop or Colima this describes the **VM**, which is the boundary
 that actually constrains the containers.
 
+The reclaimable figure names where the space is, because the total on its own
+is not actionable — build cache is frequently most of it and lives nowhere
+else in the interface. `P` prunes it.
+
 CPU and memory are the **sum across running containers**, not host-wide
 utilisation — the Docker API reports the host's capacity but never its usage,
 so anything running outside Docker is invisible here. The figures are labelled

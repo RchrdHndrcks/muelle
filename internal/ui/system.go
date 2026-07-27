@@ -171,11 +171,25 @@ func (a *App) renderDiskLine() string {
 	}
 
 	line := style(styleMuted, strings.Join(parts, " · "))
-	if reclaimable := disk.Reclaimable(); reclaimable > 0 {
-		// Worth highlighting: it is the actionable number on the line.
-		line += "   " + style(styleWarning,
-			fmt.Sprintf("%s reclaimable", FormatBytes(uint64(reclaimable))))
-		line += style(styleMuted, fmt.Sprintf(" (%d unused images)", disk.ImagesUnused))
+
+	reclaimable := disk.Reclaimable()
+	if reclaimable == 0 {
+		return line
+	}
+
+	// Name where the space is, not just how much. Build cache is often most
+	// of it and appears nowhere else in the interface, so a total attributed
+	// to images sends the reader off deleting images and wondering why the
+	// number will not move.
+	line += "   " + style(styleWarning, FormatBytes(uint64(reclaimable))+" reclaimable")
+
+	sources := disk.ReclaimableSources()
+	described := make([]string, 0, len(sources))
+	for _, source := range sources {
+		described = append(described, FormatBytes(uint64(source.Size))+" "+source.Label)
+	}
+	if len(described) > 0 {
+		line += style(styleMuted, ": "+strings.Join(described, " · "))
 	}
 	return line
 }
