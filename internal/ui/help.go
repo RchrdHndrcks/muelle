@@ -43,6 +43,7 @@ var helpSections = []helpSection{
 		{"K", "kill (SIGKILL)"},
 		{"D", "remove"},
 		{"a", "include stopped containers"},
+		{"o", "cycle sort: project, cpu, memory, age, state"},
 	}},
 	{"Compose", []helpEntry{
 		{"Enter", "action menu for the project"},

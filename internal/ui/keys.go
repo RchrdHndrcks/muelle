@@ -137,6 +137,21 @@ func (a *App) handleListKey(ctx context.Context, key tui.Key) bool {
 		a.selection[a.view] = clamp(a.selected()-a.pageSize(), length)
 		return true
 
+	case key.IsRune('o'):
+		if a.view == ViewContainers {
+			// Note which container is under the cursor before the order
+			// changes, so the cursor can follow it rather than staying
+			// at an index that now points at something else.
+			var selectedID string
+			if container, ok := a.selectedContainer(); ok {
+				selectedID = container.ID
+			}
+			a.sortKey = a.sortKey.Next()
+			a.reselect(selectedID)
+			a.setStatus("sorted by %s", a.sortKey.Label())
+			return true
+		}
+
 	case key.IsRune('/'):
 		a.openFilterPrompt()
 		return true
@@ -159,6 +174,26 @@ func (a *App) handleListKey(ctx context.Context, key tui.Key) bool {
 		return a.handleVolumeKey(ctx, key)
 	}
 	return false
+}
+
+// reselect moves the cursor back onto the container with the given ID.
+//
+// Without this, reordering leaves the cursor at the same index — which is now
+// a different container — and the next keystroke would act on something the
+// user did not choose.
+func (a *App) reselect(containerID string) {
+	list := a.filteredContainers()
+	if len(list) == 0 || containerID == "" {
+		a.selection[ViewContainers] = clamp(a.selection[ViewContainers], len(list))
+		return
+	}
+	for i, container := range list {
+		if container.ID == containerID {
+			a.selection[ViewContainers] = i
+			return
+		}
+	}
+	a.selection[ViewContainers] = clamp(a.selection[ViewContainers], len(list))
 }
 
 // pageSize is how far Ctrl-D and Page Down move: half a screen, matching the
