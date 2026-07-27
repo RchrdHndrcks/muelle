@@ -110,9 +110,15 @@ func (c *Client) Remove(ctx context.Context, id string, force, volumes bool) err
 }
 
 // Images lists all images, newest first.
+//
+// shared-size asks the daemon to compute how much of each image's size is
+// layers other images also use, which is what makes a per-image "this would
+// free X" figure meaningful. It costs the daemon a walk of the layer graph, so
+// it is requested only here, where the images view is on screen.
 func (c *Client) Images(ctx context.Context) ([]Image, error) {
+	query := url.Values{"shared-size": {"true"}}
 	var images []Image
-	if err := c.getJSON(ctx, "/images/json", nil, &images); err != nil {
+	if err := c.getJSON(ctx, "/images/json", query, &images); err != nil {
 		return nil, err
 	}
 	sort.SliceStable(images, func(i, j int) bool {

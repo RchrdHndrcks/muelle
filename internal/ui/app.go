@@ -77,9 +77,14 @@ type App struct {
 	containers []docker.Container
 	projects   []compose.Project
 	images     []docker.Image
-	volumes    []docker.Volume
-	networks   []docker.Network
-	stats      map[string]docker.Stat
+	// imageUsage counts containers per image ID. Derived from the container
+	// list because the images endpoint reports -1 for every image.
+	imageUsage map[string]int
+	// unusedImagesOnly narrows the images view to removal candidates.
+	unusedImagesOnly bool
+	volumes          []docker.Volume
+	networks         []docker.Network
+	stats            map[string]docker.Stat
 	// restartCounts is populated only for containers that look unwell;
 	// see docker.Client.RestartCounts for why it is not fetched for all.
 	restartCounts map[string]int

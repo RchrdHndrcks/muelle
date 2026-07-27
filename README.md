@@ -235,6 +235,33 @@ show that; this can.
 Columns come from whatever the daemon reports, since they depend on the host's
 `ps`, and are sized to their contents so the command gets the room.
 
+## Finding images worth deleting
+
+The metrics panel reports how much disk unused images are holding. The images
+view says which ones:
+
+```
+REPOSITORY:TAG            ID             SIZE      USAGE   CREATED
+app:latest                5442b24f3786   27.6MiB   1 used  31m
+old-build:latest          79c65f43ee28   309MiB    unused  19d
+<none>:<none>             e93e3c66305f   1.2GiB    unused  15d
+                                          17 unused · 7.9GiB reclaimable
+```
+
+`u` narrows the list to just the candidates, and `D` removes the selected one.
+
+Usage is derived from the container list rather than fetched: the images
+endpoint reports `-1` for every image's container count, and only
+`docker system df` computes it properly. Cross-referencing the containers we
+already have is both free and exact — it produces the same set the expensive
+call does.
+
+Stopped containers count as users. A stopped container still pins its image,
+and calling it unused would offer a deletion the daemon refuses.
+
+The size shown is the image's total; the reclaimable figure excludes layers
+other images still need, so it is what removing them would actually free.
+
 ## Compose
 
 The Compose view is built from the labels Compose stamps on its containers, so

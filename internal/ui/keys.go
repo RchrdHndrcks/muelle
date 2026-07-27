@@ -353,6 +353,18 @@ func (a *App) handleComposeKey(ctx context.Context, key tui.Key) bool {
 func (a *App) handleImageKey(ctx context.Context, key tui.Key) bool {
 	image, ok := a.selectedImage()
 	switch {
+	case key.IsRune('u'):
+		a.unusedImagesOnly = !a.unusedImagesOnly
+		a.selection[ViewImages] = 0
+		a.offset[ViewImages] = 0
+		if a.unusedImagesOnly {
+			count, reclaimable := a.unusedImages()
+			a.setStatus("showing %s, %s reclaimable",
+				Plural(count, "unused image", "unused images"), FormatBytes(uint64(reclaimable)))
+			break
+		}
+		a.setStatus("showing all images")
+
 	case key.IsRune('D') && ok:
 		a.confirm("Remove image", "Remove "+image.Tag()+"?", func() {
 			a.runAction(ctx, "removed "+image.Tag(), func(c context.Context) error {
