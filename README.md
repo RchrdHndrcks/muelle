@@ -1,0 +1,199 @@
+# muelle
+
+A terminal UI for managing Docker containers and Compose projects on a single
+host. See what is running, read logs, and drop into a `mysql` prompt without
+looking up the password you set six months ago.
+
+Think Dokploy, minus the web server, the database and the multi-host
+orchestration — just a binary you run over SSH.
+
+**Zero dependencies.** `go.mod` has no `require` block. The Docker Engine API
+is HTTP over a Unix socket, which `net/http` speaks natively; raw terminal mode
+is two ioctls. Nothing else was needed.
+
+```
+ muelle [1 Containers]  2 Compose  3 Images  4 Volumes            9/12 up  docker 27.4.0
+ NAME              STATE    CPU     MEM       IMAGE              PORTS                AGE
+ shop-api          up       0.7%    383MiB    shop/api:1.4       8080->8080/tcp       3d
+ shop-db           up       0.8%    747MiB    mysql:8.0          3306->3306/tcp       3d
+ shop-cache        up       0.1%    12MiB     redis:7-alpine     6379->6379/tcp       3d
+ blog-web          exited   -       -         blog/web:2.1                            9d
+ enter inspect  l logs  x exec  s start  t stop  r restart  D remove  a all  / filter  ? help
+```
+
+## Install
+
+```sh
+go install github.com/RchrdHndrcks/muelle/cmd/muelle@latest
+```
+
+Or build from source:
+
+```sh
+git clone https://github.com/RchrdHndrcks/muelle
+cd muelle
+make build        # -> bin/muelle
+make cross        # -> linux/amd64 and linux/arm64 binaries for a server
+```
+
+Requires Go 1.25+, a reachable Docker daemon, and — for exec and Compose
+actions only — the `docker` CLI on `PATH`.
+
+## Use
+
+```sh
+muelle                      # start on the containers view
+muelle -view compose        # start on the compose view
+muelle -all                 # include stopped containers
+muelle -host tcp://host:2375
+muelle -dump                # render one frame to stdout and exit
+```
+
+### Keys
+
+Press `?` in the app for the full reference.
+
+| Key | Action |
+|---|---|
+| `1` `2` `3` `4`, `Tab` | switch between containers, compose, images, volumes |
+| `j` `k`, `↓` `↑` | move selection |
+| `g` `G` | first / last |
+| `Ctrl-d` `Ctrl-u` | half page down / up |
+| `/` | filter the list |
+| `Enter`, `i` | inspect (full JSON) |
+| `l` | follow logs |
+| `x` | exec menu |
+| `e` | shell immediately (`bash`, falling back to `sh`) |
+| `s` `t` `r` | start / stop / restart |
+| `p` | pause or unpause |
+| `K` | kill (SIGKILL) |
+| `D` | remove |
+| `a` | include stopped containers |
+| `P` | prune (images and volumes views) |
+| `Ctrl-r` | refresh now |
+| `q`, `Ctrl-c` | quit |
+
+Destructive actions always ask first, and a destructive prompt will not accept
+a stray `Enter` — it wants an explicit `y`.
+
+In the log viewer: `f` follow, `w` wrap, `t` timestamps, `/` filter, `c` clear.
+Scrolling up pauses follow; scrolling back to the bottom resumes it.
+
+## The exec menu
+
+This is the feature the tool exists for. Press `x` on a container and muelle
+reads its image and environment to offer commands that are ready to run:
+
+```
+┌────────────────────────────────────────────────────────┐
+│ Exec in shop-db                                        │
+├────────────────────────────────────────────────────────┤
+│ ▸ mysql as root (shop)   mysql -u root -p******** shop │
+│   mysql as app (shop)    mysql -u app -p******** shop  │
+│   mysqldump              mysqldump -u root -p********  │
+│   bash shell             bash                          │
+│   sh shell               sh                            │
+│                                                        │
+│ Enter = run    Esc = cancel                            │
+└────────────────────────────────────────────────────────┘
+```
+
+The password comes from the container's own environment — the daemon has had
+it all along. It is masked on screen and passed to the real command intact.
+
+Recognised images: MySQL / MariaDB / Percona, PostgreSQL (and pgvector,
+TimescaleDB, PostGIS), Redis / Valkey, MongoDB, RabbitMQ, nginx, Node, Python.
+Everything else gets `bash` and `sh`, which are also always offered as a
+fallback.
+
+## Compose
+
+The Compose view is built from the labels Compose stamps on its containers, so
+projects appear with no configuration. Stopped projects have no containers to
+read labels from, so directories listed in `compose_dirs` are also scanned one
+level deep for a compose file.
+
+Press `Enter` on a project for the action menu (`up -d`, `down`, `restart`,
+`pull`, `build`, `ps`, `logs`), or `u` / `d` / `r` directly. `l` follows every
+service in the project at once, with each line labelled by service.
+
+Actions shell out to `docker compose` with the project identified explicitly
+(`-f <file> --project-directory <dir> -p <name>`), so they behave the same
+regardless of where muelle was started.
+
+## Configuration
+
+Written on first run to `$MUELLE_CONFIG` if set, otherwise
+`~/.config/muelle/config.json` on Linux and
+`~/Library/Application Support/muelle/config.json` on macOS.
+
+```json
+{
+  "docker_host": "",
+  "compose_dirs": ["~/deployments"],
+  "refresh_seconds": 3,
+  "log_tail": 500,
+  "stats": true,
+  "stop_timeout": 10,
+  "colour": true
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `docker_host` | daemon endpoint; empty means autodetect |
+| `compose_dirs` | directories scanned for stopped Compose projects |
+| `refresh_seconds` | polling interval, clamped to 1–60 |
+| `log_tail` | lines of history loaded when opening logs |
+| `stats` | CPU and memory columns; each sample holds a daemon request open for about a second, so turn this off on a busy host or a slow remote socket |
+| `stop_timeout` | seconds a container gets to exit before being killed |
+| `colour` | styled output; `NO_COLOR` in the environment always wins |
+
+The daemon is found by trying, in order: `DOCKER_HOST`; the well-known socket
+paths (`/var/run/docker.sock`, Docker Desktop, Colima, rootless); and finally
+`docker context inspect`. Custom contexts only appear in the last of those,
+which is why it is checked.
+
+## `-dump`
+
+`muelle -dump` renders one frame to stdout and exits, using the same model and
+render path as the interactive app. It needs no terminal, so it works in a
+pipe, in CI, or from a script:
+
+```sh
+muelle -dump -all
+muelle -dump -view compose | grep partial
+```
+
+## Design notes
+
+- **No Docker SDK.** The endpoints used are few and stable; the SDK would add
+  ~40 transitive modules to save a couple of hundred lines.
+- **No TUI framework.** Rendering is immediate mode: views return styled lines,
+  and the whole frame is written in one `write` bracketed by synchronized-output
+  markers. Truncation is ANSI-aware, because slicing a string mid-escape
+  corrupts the rest of the screen.
+- **Interactive sessions are delegated.** Attaching a terminal to `docker exec`
+  over the API means hijacking the connection and proxying raw bytes. The CLI
+  already does that correctly, so muelle suspends itself and runs it.
+- **One goroutine owns the state.** Everything asynchronous reports back as an
+  event on a channel, so there are no locks on the model and a slow daemon
+  never freezes the keyboard.
+
+The full design rationale is in
+[`docs/superpowers/specs`](docs/superpowers/specs).
+
+## Development
+
+```sh
+make check    # format, vet, and test with the race detector
+make test     # tests only
+make dump     # run against your daemon without a terminal
+```
+
+Supports Linux and macOS. Windows is not supported (`npipe://` is not
+implemented).
+
+## Licence
+
+MIT

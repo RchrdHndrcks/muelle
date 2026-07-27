@@ -1,0 +1,292 @@
+package ui
+
+import (
+	"context"
+	"testing"
+
+	"github.com/RchrdHndrcks/muelle/internal/tui"
+)
+
+// loadedApp returns an app populated from the fake daemon, showing everything.
+func loadedApp(t *testing.T) *App {
+	t.Helper()
+	app := newTestApp(t)
+	app.SetShowAll(true)
+	if err := app.LoadOnce(context.Background()); err != nil {
+		t.Fatalf("LoadOnce: %v", err)
+	}
+	return app
+}
+
+func press(app *App, key tui.Key) {
+	app.handleKey(context.Background(), key)
+}
+
+func TestNavigationMovesSelection(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, runeKey('j'))
+	if got := app.selected(); got != 1 {
+		t.Errorf("got %d after j, want 1", got)
+	}
+
+	press(app, runeKey('k'))
+	if got := app.selected(); got != 0 {
+		t.Errorf("got %d after k, want 0", got)
+	}
+}
+
+func TestNavigationStopsAtListEnds(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, runeKey('k'))
+	if got := app.selected(); got != 0 {
+		t.Errorf("got %d, want to stay at the top", got)
+	}
+
+	press(app, runeKey('G'))
+	last := app.currentLength() - 1
+	press(app, runeKey('j'))
+	if got := app.selected(); got != last {
+		t.Errorf("got %d, want to stay at the last row (%d)", got, last)
+	}
+}
+
+func TestGAndShiftGJumpToEnds(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, runeKey('G'))
+	if got := app.selected(); got != app.currentLength()-1 {
+		t.Errorf("got %d, want the last row", got)
+	}
+
+	press(app, runeKey('g'))
+	if got := app.selected(); got != 0 {
+		t.Errorf("got %d, want the first row", got)
+	}
+}
+
+func TestNumberKeysSwitchViews(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, runeKey('3'))
+	if app.view != ViewImages {
+		t.Errorf("got %v, want the images view", app.view.Title())
+	}
+
+	press(app, runeKey('1'))
+	if app.view != ViewContainers {
+		t.Errorf("got %v, want the containers view", app.view.Title())
+	}
+}
+
+func TestTabCyclesThroughViews(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, typeKey(tui.KeyTab))
+	if app.view != ViewCompose {
+		t.Errorf("got %v, want the next view", app.view.Title())
+	}
+
+	press(app, typeKey(tui.KeyShiftTab))
+	if app.view != ViewContainers {
+		t.Errorf("got %v, want the previous view", app.view.Title())
+	}
+}
+
+func TestQuestionMarkTogglesHelp(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, runeKey('?'))
+	if app.mode != ModeHelp {
+		t.Error("? should open help")
+	}
+
+	press(app, typeKey(tui.KeyEscape))
+	if app.mode != ModeList {
+		t.Error("Escape should leave help")
+	}
+}
+
+func TestSlashOpensFilterPrompt(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, runeKey('/'))
+
+	if app.overlay == nil || app.overlay.Kind != OverlayInput {
+		t.Fatal("/ should open a text input")
+	}
+
+	for _, r := range "cache" {
+		press(app, runeKey(r))
+	}
+	press(app, typeKey(tui.KeyEnter))
+
+	if app.filter != "cache" {
+		t.Errorf("got filter %q, want %q", app.filter, "cache")
+	}
+	if app.overlay != nil {
+		t.Error("the overlay should close after Enter")
+	}
+}
+
+func TestEscapeClearsFilter(t *testing.T) {
+	app := loadedApp(t)
+	app.filter = "cache"
+
+	press(app, typeKey(tui.KeyEscape))
+
+	if app.filter != "" {
+		t.Errorf("got %q, want the filter cleared", app.filter)
+	}
+}
+
+// Every destructive key must raise a confirmation rather than acting at once.
+func TestDestructiveKeysAlwaysConfirmFirst(t *testing.T) {
+	cases := []struct {
+		view View
+		key  rune
+		name string
+	}{
+		{ViewContainers, 'D', "remove container"},
+		{ViewContainers, 'K', "kill container"},
+		{ViewImages, 'D', "remove image"},
+		{ViewImages, 'P', "prune images"},
+		{ViewVolumes, 'D', "remove volume"},
+		{ViewVolumes, 'P', "prune volumes"},
+	}
+
+	for _, tc := range cases {
+		app := loadedApp(t)
+		app.SetView(tc.view)
+
+		press(app, runeKey(tc.key))
+
+		if app.overlay == nil {
+			t.Errorf("%s: pressing %q acted without confirmation", tc.name, tc.key)
+			continue
+		}
+		if app.overlay.Kind != OverlayConfirm {
+			t.Errorf("%s: got overlay kind %v, want a confirmation", tc.name, app.overlay.Kind)
+		}
+		if !app.overlay.Danger {
+			t.Errorf("%s: the confirmation should be marked destructive", tc.name)
+		}
+	}
+}
+
+// While an overlay is open, keys belong to it — a stray "q" must not quit.
+func TestOverlayCapturesKeysFromTheList(t *testing.T) {
+	app := loadedApp(t)
+	app.overlay = NewInput("Filter", "match:", "", func(any) {})
+
+	press(app, runeKey('q'))
+
+	select {
+	case <-app.quit:
+		t.Fatal("q reached the global handler and quit the app")
+	default:
+	}
+	if app.overlay == nil || app.overlay.Input != "q" {
+		t.Error("the key should have been typed into the overlay")
+	}
+}
+
+func TestQuitStopsTheApp(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, runeKey('q'))
+
+	select {
+	case <-app.quit:
+	default:
+		t.Error("q should stop the app")
+	}
+}
+
+func TestCtrlCStopsTheApp(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, typeKey(tui.KeyCtrlC))
+
+	select {
+	case <-app.quit:
+	default:
+		t.Error("Ctrl-C should stop the app")
+	}
+}
+
+// Stopping is idempotent: a second quit must not panic on a closed channel.
+func TestQuittingTwiceIsSafe(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, runeKey('q'))
+	press(app, typeKey(tui.KeyCtrlC))
+	app.Stop()
+}
+
+func TestLogViewerKeysToggleOptions(t *testing.T) {
+	app := loadedApp(t)
+	app.mode = ModeLogs
+
+	wrapBefore := app.logWrap
+	press(app, runeKey('w'))
+	if app.logWrap == wrapBefore {
+		t.Error("w should toggle wrapping")
+	}
+
+	stampsBefore := app.logStamps
+	press(app, runeKey('t'))
+	if app.logStamps == stampsBefore {
+		t.Error("t should toggle timestamps")
+	}
+
+	press(app, runeKey('f'))
+	if app.logPager.Following() {
+		t.Error("f should pause following when it was on")
+	}
+}
+
+func TestEscapeLeavesTheLogViewer(t *testing.T) {
+	app := loadedApp(t)
+	app.mode = ModeLogs
+
+	press(app, typeKey(tui.KeyEscape))
+
+	if app.mode != ModeList {
+		t.Error("Escape should return to the list")
+	}
+}
+
+// The exec menu needs a running container; offering it for a stopped one would
+// fail confusingly at the daemon.
+func TestExecIsRefusedForStoppedContainer(t *testing.T) {
+	app := loadedApp(t)
+	app.dockerCLI = true
+	app.filter = "shop-db" // the exited container
+
+	press(app, runeKey('x'))
+
+	if app.overlay != nil {
+		t.Error("no exec menu should open for a stopped container")
+	}
+	if !app.status.isError {
+		t.Error("the refusal should be explained in the status bar")
+	}
+}
+
+// Without the docker CLI, exec cannot work; say so rather than failing later.
+func TestExecReportsMissingDockerCLI(t *testing.T) {
+	app := loadedApp(t)
+	app.dockerCLI = false
+	app.filter = "shop-api" // running
+
+	press(app, runeKey('x'))
+
+	if !app.status.isError {
+		t.Error("expected an error explaining the CLI is required")
+	}
+	if app.overlay != nil {
+		t.Error("no menu should open without the CLI")
+	}
+}

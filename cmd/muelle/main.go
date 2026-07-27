@@ -1,0 +1,247 @@
+// Command muelle is a terminal UI for managing Docker containers and Compose
+// projects on a single host.
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+
+	"github.com/RchrdHndrcks/muelle/internal/config"
+	"github.com/RchrdHndrcks/muelle/internal/docker"
+	"github.com/RchrdHndrcks/muelle/internal/tui"
+	"github.com/RchrdHndrcks/muelle/internal/ui"
+)
+
+// version is stamped at build time with -ldflags "-X main.version=...".
+var version = "dev"
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "muelle: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	var (
+		hostFlag    = flag.String("host", "", "docker daemon endpoint (default: $DOCKER_HOST, then autodetect)")
+		viewFlag    = flag.String("view", "containers", "initial view: containers, compose, images or volumes")
+		dumpFlag    = flag.Bool("dump", false, "render a single frame to stdout and exit, for use without a terminal")
+		allFlag     = flag.Bool("all", false, "include stopped containers")
+		versionFlag = flag.Bool("version", false, "print the version and exit")
+	)
+	flag.Usage = usage
+	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println("muelle", version)
+		return nil
+	}
+
+	cfg, configPath, err := config.LoadOrCreate()
+	if err != nil {
+		// A broken config file should not be fatal; report it and carry
+		// on with defaults.
+		fmt.Fprintf(os.Stderr, "muelle: %v (using defaults)\n", err)
+	}
+	if *hostFlag != "" {
+		cfg.DockerHost = *hostFlag
+	}
+
+	client, err := docker.New(cfg.DockerHost)
+	if err != nil {
+		return err
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if _, err := client.Ping(ctx); err != nil {
+		return fmt.Errorf("cannot reach the docker daemon at %s: %w\n\n"+
+			"Check that docker is running, or set DOCKER_HOST / -host.\n"+
+			"Config: %s", client.Host(), err, configPath)
+	}
+
+	view, err := parseView(*viewFlag)
+	if err != nil {
+		return err
+	}
+
+	if *dumpFlag {
+		return dump(ctx, cfg, client, view, *allFlag)
+	}
+	return interactive(ctx, cfg, client, view, *allFlag)
+}
+
+// usage prints help text with more context than flag's default.
+func usage() {
+	fmt.Fprintf(os.Stderr, `muelle — terminal UI for docker
+
+Usage:
+  muelle [flags]
+
+Flags:
+`)
+	flag.PrintDefaults()
+	fmt.Fprintf(os.Stderr, `
+Keys:
+  1-4 / Tab   switch views        l   logs
+  j / k       move                x   exec menu (mysql, psql, redis-cli, shells)
+  Enter       inspect             ?   full key reference
+  q           quit
+
+Configuration is read from $MUELLE_CONFIG, or the muelle directory under
+your user config directory (~/.config on Linux).
+`)
+}
+
+// parseView maps the -view flag to a view.
+func parseView(name string) (ui.View, error) {
+	switch strings.ToLower(name) {
+	case "containers", "container", "c":
+		return ui.ViewContainers, nil
+	case "compose", "projects", "p":
+		return ui.ViewCompose, nil
+	case "images", "image", "i":
+		return ui.ViewImages, nil
+	case "volumes", "volume", "v":
+		return ui.ViewVolumes, nil
+	default:
+		return ui.ViewContainers, fmt.Errorf("unknown view %q: expected containers, compose, images or volumes", name)
+	}
+}
+
+// colourEnabled reports whether styled output should be produced. NO_COLOR is
+// honoured whatever the config says, per the convention at no-color.org.
+func colourEnabled(cfg config.Config) bool {
+	if _, disabled := os.LookupEnv("NO_COLOR"); disabled {
+		return false
+	}
+	return cfg.Colour
+}
+
+// dump renders one frame to stdout and exits.
+//
+// This exists because the interactive UI needs a controlling terminal, and
+// plenty of useful contexts do not have one: CI, a script, an agent driving
+// the tool. It shares the model and render path with the real app, so what it
+// prints is what the TUI would show.
+func dump(ctx context.Context, cfg config.Config, client *docker.Client, view ui.View, all bool) error {
+	const dumpWidth, dumpHeight = 120, 40
+
+	width, height := dumpWidth, dumpHeight
+	if tui.IsTerminal(tui.StdoutFd) {
+		width, height = tui.SizeOrDefault(tui.StdoutFd)
+	}
+
+	screen := tui.NewScreen(os.Stdout, width, height, colourEnabled(cfg))
+	app := ui.New(cfg, client, screen, nil)
+	app.SetShowAll(all)
+	app.SetView(view)
+
+	if err := app.LoadOnce(ctx); err != nil {
+		return err
+	}
+	for _, line := range app.Frame(width, height) {
+		fmt.Println(strings.TrimRight(line, " "))
+	}
+	return nil
+}
+
+// interactive runs the full TUI.
+func interactive(ctx context.Context, cfg config.Config, client *docker.Client, view ui.View, all bool) error {
+	if !tui.IsTerminal(tui.StdinFd) {
+		return fmt.Errorf("stdin is not a terminal; use -dump to render a single frame instead")
+	}
+
+	state, err := tui.MakeRaw(tui.StdinFd)
+	if err != nil {
+		return err
+	}
+	// Restoring the terminal is the one thing that must happen no matter
+	// how this function ends: a process that exits in raw mode leaves the
+	// user's shell with no echo and no line editing. The deferred call runs
+	// on the panic path too, and the recover below re-panics only after the
+	// terminal is safe.
+	defer tui.Restore(tui.StdinFd, state)
+
+	width, height := tui.SizeOrDefault(tui.StdoutFd)
+	screen := tui.NewScreen(os.Stdout, width, height, colourEnabled(cfg))
+	if err := screen.Enter(); err != nil {
+		return err
+	}
+	defer screen.Leave()
+
+	runner := &ui.Runner{
+		// Handing the terminal to a child means undoing everything the
+		// TUI set up, then putting it back exactly as it was.
+		Suspend: func() error {
+			if err := screen.Leave(); err != nil {
+				return err
+			}
+			return tui.Restore(tui.StdinFd, state)
+		},
+		Resume: func() error {
+			newState, err := tui.MakeRaw(tui.StdinFd)
+			if err != nil {
+				return err
+			}
+			state = newState
+			// The terminal may have been resized while the child had
+			// it, so re-measure rather than trusting the old size.
+			width, height := tui.SizeOrDefault(tui.StdoutFd)
+			screen.Resize(width, height)
+			return screen.Enter()
+		},
+	}
+
+	app := ui.New(cfg, client, screen, runner)
+	app.SetShowAll(all)
+	app.SetView(view)
+
+	keys := tui.ReadKeys(os.Stdin)
+	resize := watchResize(ctx)
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			// The deferred restore above has not run yet, so put the
+			// terminal back before the panic reaches the runtime and
+			// prints over a raw-mode screen.
+			screen.Leave()
+			tui.Restore(tui.StdinFd, state)
+			panic(recovered)
+		}
+	}()
+
+	return app.Run(ctx, keys, resize)
+}
+
+// watchResize converts SIGWINCH into a channel the event loop can select on.
+func watchResize(ctx context.Context) <-chan struct{} {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGWINCH)
+
+	resize := make(chan struct{}, 1)
+	go func() {
+		defer signal.Stop(signals)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-signals:
+				// Non-blocking: a burst of resize events while
+				// dragging a window edge only needs one redraw.
+				select {
+				case resize <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}()
+	return resize
+}
