@@ -125,7 +125,7 @@ func run() error {
 	if *dumpFlag {
 		return dump(ctx, cfg, client, view, *allFlag)
 	}
-	return interactive(ctx, cfg, client, view, *allFlag)
+	return interactive(ctx, cfg, configPath, client, view, *allFlag)
 }
 
 // usage prints help text with more context than flag's default.
@@ -207,7 +207,7 @@ func dump(ctx context.Context, cfg config.Config, client *docker.Client, view ui
 }
 
 // interactive runs the full TUI.
-func interactive(ctx context.Context, cfg config.Config, client *docker.Client, view ui.View, all bool) error {
+func interactive(ctx context.Context, cfg config.Config, configPath string, client *docker.Client, view ui.View, all bool) error {
 	if !tui.IsTerminal(tui.StdinFd) {
 		return fmt.Errorf("stdin is not a terminal; use -dump to render a single frame instead")
 	}
@@ -271,6 +271,7 @@ func interactive(ctx context.Context, cfg config.Config, client *docker.Client, 
 	app.SetShowAll(all)
 	app.SetView(view)
 	app.SetBuild(shortBuildVersion())
+	app.SetPreferenceWriter(preferenceWriter(configPath))
 
 	resize := watchResize(ctx)
 
@@ -286,6 +287,25 @@ func interactive(ctx context.Context, cfg config.Config, client *docker.Client, 
 	}()
 
 	return app.Run(ctx, keys.Keys(), resize)
+}
+
+// preferenceWriter returns a function that records a setting change.
+//
+// Writing happens off the event loop: a preference is changed by a keystroke,
+// and a slow or stuck filesystem should never be able to make the interface
+// stop responding to one. A failure is ignored deliberately — a preference
+// that could not be saved is worth strictly less than the session it would
+// interrupt to complain about, and the setting still applies for as long as
+// the application is running.
+func preferenceWriter(path string) func(func(*config.Config)) {
+	if path == "" {
+		return nil
+	}
+	return func(change func(*config.Config)) {
+		go func() {
+			_ = config.Update(path, change)
+		}()
+	}
 }
 
 // watchResize converts SIGWINCH into a channel the event loop can select on.

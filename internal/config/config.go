@@ -35,6 +35,10 @@ type Config struct {
 	Colour bool `json:"colour"`
 	// SystemPanel shows the host metrics summary beneath the list.
 	SystemPanel bool `json:"system_panel"`
+	// Sort is the container list ordering, by its name in the interface:
+	// project, cpu, memory, age or state. An unrecognised value falls back
+	// to the default rather than refusing to start.
+	Sort string `json:"sort"`
 }
 
 // Default returns the configuration used when no file exists.
@@ -47,6 +51,7 @@ func Default() Config {
 		StopTimeout:    10,
 		Colour:         true,
 		SystemPanel:    true,
+		Sort:           "project",
 	}
 }
 
@@ -108,6 +113,24 @@ func Save(path string, config Config) error {
 		return fmt.Errorf("config: write %s: %w", path, err)
 	}
 	return nil
+}
+
+// Update applies a change to the stored configuration.
+//
+// It re-reads the file rather than writing back an in-memory copy, so a
+// setting changed from inside the application does not silently discard an
+// edit someone made to the file meanwhile. Only the field the caller touches
+// moves.
+func Update(path string, change func(*Config)) error {
+	config, err := Load(path)
+	if err != nil {
+		// A file that cannot be parsed should not be flattened by a
+		// preference change; the user's text is worth more than the
+		// preference.
+		return err
+	}
+	change(&config)
+	return Save(path, config)
 }
 
 // LoadOrCreate loads the configuration, writing a default file when none

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/RchrdHndrcks/muelle/internal/compose"
+	"github.com/RchrdHndrcks/muelle/internal/config"
 	"github.com/RchrdHndrcks/muelle/internal/docker"
 	"github.com/RchrdHndrcks/muelle/internal/quickcmd"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
@@ -164,7 +165,12 @@ func (a *App) handleListKey(ctx context.Context, key tui.Key) bool {
 			}
 			a.sortKey = a.sortKey.Next()
 			a.reselect(selectedID)
-			a.setStatus("sorted by %s", a.sortKey.Label())
+			// Remembered, so the ordering someone chose is the one they
+			// find next time rather than a setting to reapply on every
+			// launch.
+			chosen := a.sortKey.Label()
+			a.remember(func(c *config.Config) { c.Sort = chosen })
+			a.setStatus("sorted by %s", chosen)
 			return true
 		}
 

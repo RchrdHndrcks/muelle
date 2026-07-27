@@ -353,6 +353,7 @@ Written on first run to `$MUELLE_CONFIG` if set, otherwise
 | `stats` | CPU and memory columns; each sample holds a daemon request open for about a second, so turn this off on a busy host or a slow remote socket |
 | `stop_timeout` | seconds a container gets to exit before being killed |
 | `colour` | styled output; `NO_COLOR` in the environment always wins |
+| `sort` | container ordering: `project`, `cpu`, `memory`, `age` or `state`. Updated when you press `o`, so the ordering you chose is the one you come back to |
 
 The daemon is found by trying, in order: `DOCKER_HOST`; the well-known socket
 paths (`/var/run/docker.sock`, Docker Desktop, Colima, rootless); and finally

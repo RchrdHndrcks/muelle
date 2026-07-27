@@ -43,6 +43,20 @@ func (s SortKey) Label() string {
 // Next returns the following ordering, wrapping around.
 func (s SortKey) Next() SortKey { return (s + 1) % sortKeyCount }
 
+// ParseSortKey recognises an ordering by the name it goes by in the
+// interface, reporting whether it was one.
+//
+// The names are the labels the status bar shows, so what is written in the
+// configuration file is what the application calls it.
+func ParseSortKey(name string) (SortKey, bool) {
+	for key := SortDefault; key < sortKeyCount; key++ {
+		if key.Label() == name {
+			return key, true
+		}
+	}
+	return SortDefault, false
+}
+
 // Descending reports whether the key sorts largest first.
 //
 // The interesting end differs per key: for a resource you want the biggest

@@ -107,6 +107,9 @@ type App struct {
 	filter string
 	// sortKey orders the container list.
 	sortKey SortKey
+	// persist records a preference that should outlive the session. Nil
+	// when there is nowhere to write, as in the headless dump mode.
+	persist func(func(*config.Config))
 
 	overlay *Overlay
 	status  status
@@ -178,10 +181,36 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		showSystem:     cfg.SystemPanel,
 		imageUsage:     make(map[string]int),
 		logFormat:      true,
+		sortKey:        parseConfiguredSort(cfg.Sort),
 		events:         make(chan event, 64),
 		quit:           make(chan struct{}),
 		dockerCLI:      DockerCLIAvailable(),
 	}
+}
+
+// parseConfiguredSort reads the stored ordering, falling back to the default
+// rather than refusing to start over a value someone mistyped.
+func parseConfiguredSort(name string) SortKey {
+	key, _ := ParseSortKey(name)
+	return key
+}
+
+// SetPreferenceWriter supplies somewhere to record settings that should
+// outlive the session.
+//
+// Injected rather than built in, so this package needs to know nothing about
+// where configuration lives — and so the headless dump mode, which should
+// never write anything, simply does not provide one.
+func (a *App) SetPreferenceWriter(write func(func(*config.Config))) {
+	a.persist = write
+}
+
+// remember records a preference change, if there is anywhere to put it.
+func (a *App) remember(change func(*config.Config)) {
+	if a.persist == nil {
+		return
+	}
+	a.persist(change)
 }
 
 // event is anything the loop must react to besides a key press.
