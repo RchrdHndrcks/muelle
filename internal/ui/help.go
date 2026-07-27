@@ -46,6 +46,7 @@ var helpSections = []helpSection{
 		{"D", "remove"},
 		{"a", "include stopped containers"},
 		{"o", "cycle sort: project, cpu, memory, age, state"},
+		{"P", "system prune (reclaim disk)"},
 	}},
 	{"Compose", []helpEntry{
 		{"Enter", "action menu for the project"},

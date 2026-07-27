@@ -18,8 +18,13 @@ import (
 // global bindings, so "q" quits from a list but types a "q" into a filter.
 func (a *App) handleKey(ctx context.Context, key tui.Key) {
 	if a.overlay != nil {
-		closed, consumed := a.overlay.HandleKey(key)
-		if closed {
+		// Hold on to the overlay being dismissed. Its accept callback runs
+		// inside HandleKey and may install a follow-up — a menu choice
+		// raising a confirmation, say. Clearing unconditionally would wipe
+		// that replacement and swallow the action with it.
+		current := a.overlay
+		closed, consumed := current.HandleKey(key)
+		if closed && a.overlay == current {
 			a.overlay = nil
 		}
 		if consumed {
@@ -308,6 +313,9 @@ func (a *App) handleContainerKey(ctx context.Context, key tui.Key) bool {
 				return a.docker.Remove(c, container.ID, true, false)
 			})
 		})
+
+	case key.IsRune('P'):
+		a.openSystemPruneMenu(ctx)
 
 	default:
 		return false
