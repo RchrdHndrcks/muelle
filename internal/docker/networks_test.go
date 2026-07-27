@@ -99,7 +99,7 @@ func TestRemoveNetworkIssuesDelete(t *testing.T) {
 	if method != http.MethodDelete {
 		t.Errorf("got %s, want DELETE", method)
 	}
-	if got := (*requested)[0]; got != "/networks/abc" {
+	if got := requested.First(); got != "/networks/abc" {
 		t.Errorf("got %q, want the network path", got)
 	}
 }
