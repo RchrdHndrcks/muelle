@@ -176,6 +176,8 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		logWrap:        true,
 		logStamps:      false,
 		showSystem:     cfg.SystemPanel,
+		imageUsage:     make(map[string]int),
+		logFormat:      true,
 		events:         make(chan event, 64),
 		quit:           make(chan struct{}),
 		dockerCLI:      DockerCLIAvailable(),

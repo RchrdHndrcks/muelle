@@ -306,3 +306,40 @@ func TestSelectionIsPerView(t *testing.T) {
 		t.Errorf("got %d, want the container selection restored", got)
 	}
 }
+
+// A field declared but never initialised is invisible to every test that
+// supplies its own value, which is how log formatting came to ship switched
+// off. This asserts the state the application actually starts in.
+func TestNewAppliesItsDefaults(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComposeDirs = nil
+	app := New(cfg, fakeDaemon(t), tui.NewScreen(&bytes.Buffer{}, 120, 30, false), nil)
+
+	if !app.logFormat {
+		t.Error("log formatting should be on by default; it is the point of parsing the lines")
+	}
+	if !app.logWrap {
+		t.Error("wrapping should be on by default")
+	}
+	if app.showSystem != cfg.SystemPanel {
+		t.Errorf("got showSystem %v, want it to follow the configuration", app.showSystem)
+	}
+	if app.imageUsage == nil {
+		t.Error("the usage map should be ready to read before the first refresh")
+	}
+	if app.mode != ModeList || app.view != ViewContainers {
+		t.Errorf("got mode %v view %v, want the container list", app.mode, app.view.Title())
+	}
+}
+
+// The formatter is what makes a structured log readable; defaulting it off
+// leaves every user to discover a key that turns the feature on.
+func TestLogViewFormatsByDefault(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComposeDirs = nil
+	app := New(cfg, fakeDaemon(t), tui.NewScreen(&bytes.Buffer{}, 120, 30, false), nil)
+
+	if !app.logOptions(120).Format {
+		t.Error("the log view should format without being asked")
+	}
+}
