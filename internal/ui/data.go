@@ -26,6 +26,9 @@ const diskUsageTimeout = 90 * time.Second
 type containersLoaded struct {
 	containers []docker.Container
 	projects   []compose.Project
+	// imageUsage is computed from every container, running or not, so the
+	// images view can tell which images are removable.
+	imageUsage map[string]int
 	err        error
 }
 
@@ -37,6 +40,9 @@ func (e containersLoaded) apply(a *App) {
 	}
 	a.containers = e.containers
 	a.projects = e.projects
+	if e.imageUsage != nil {
+		a.imageUsage = e.imageUsage
+	}
 	// A failed refresh leaves the previous data on screen; a successful one
 	// clears the error that reported it.
 	if a.status.isError && strings.HasPrefix(a.status.text, "refresh failed") {
@@ -243,7 +249,11 @@ func (a *App) refresh(ctx context.Context) {
 			compose.FromContainers(forProjects),
 			compose.Discover(composeDirs),
 		)
-		a.post(containersLoaded{containers: containers, projects: projects})
+		a.post(containersLoaded{
+			containers: containers,
+			projects:   projects,
+			imageUsage: docker.ImageUsage(forProjects),
+		})
 
 		// Restart counts need an inspect each, so only containers that
 		// already look unwell are worth the call. On a healthy host this
@@ -339,6 +349,7 @@ func (a *App) LoadOnce(ctx context.Context) error {
 		}
 	}
 	a.containers = containers
+	a.imageUsage = docker.ImageUsage(all)
 	if images, err := a.docker.Images(ctx); err == nil {
 		a.images = images
 	}
@@ -451,19 +462,43 @@ func (a *App) filteredProjects() []compose.Project {
 	return matched
 }
 
-// filteredImages returns the images matching the current filter.
+// filteredImages returns the images matching the current filter and, when the
+// unused-only toggle is on, only those no container references.
 func (a *App) filteredImages() []docker.Image {
-	if a.filter == "" {
-		return a.images
-	}
 	needle := strings.ToLower(a.filter)
 	matched := make([]docker.Image, 0, len(a.images))
-	for _, i := range a.images {
-		if strings.Contains(strings.ToLower(i.Tag()), needle) {
-			matched = append(matched, i)
+
+	for _, image := range a.images {
+		if a.unusedImagesOnly && a.imageInUse(image) {
+			continue
 		}
+		if needle != "" && !strings.Contains(strings.ToLower(image.Tag()), needle) {
+			continue
+		}
+		matched = append(matched, image)
 	}
 	return matched
+}
+
+// imageInUse reports whether any container references the image.
+//
+// Containers are counted whether running or not: a stopped container still
+// pins its image, and calling it unused would offer a deletion the daemon
+// refuses.
+func (a *App) imageInUse(image docker.Image) bool {
+	return a.imageUsage[image.ID] > 0
+}
+
+// unusedImages returns the images no container references, with the total they
+// would free.
+func (a *App) unusedImages() (count int, reclaimable int64) {
+	for _, image := range a.images {
+		if !a.imageInUse(image) {
+			count++
+			reclaimable += image.Reclaimable()
+		}
+	}
+	return count, reclaimable
 }
 
 // filteredNetworks returns the networks matching the current filter.

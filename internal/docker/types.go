@@ -178,7 +178,44 @@ type Image struct {
 	RepoDigests []string `json:"RepoDigests"`
 	Created     int64    `json:"Created"`
 	Size        int64    `json:"Size"`
-	Containers  int64    `json:"Containers"`
+	// SharedSize is the portion of Size made up of layers other images also
+	// use. It is -1 unless the request asked the daemon to compute it.
+	SharedSize int64 `json:"SharedSize"`
+	// Containers is how many containers reference the image, but the list
+	// endpoint reports -1 for every image — the daemon only computes it for
+	// /system/df. Usage is derived from the container list instead; see
+	// ImageUsage.
+	Containers int64 `json:"Containers"`
+}
+
+// Reclaimable returns roughly how much removing this image would free: its own
+// layers, excluding those other images still need.
+//
+// Falls back to the full size when the daemon did not compute the shared
+// portion, which overstates rather than understates — the honest direction for
+// a figure offered before a deletion.
+func (i Image) Reclaimable() int64 {
+	if i.SharedSize < 0 {
+		return i.Size
+	}
+	return i.Size - i.SharedSize
+}
+
+// ImageUsage counts how many of the given containers reference each image.
+//
+// The list endpoint reports Containers as -1 for every image, so this is the
+// only way to know what is in use without the expensive /system/df call. It
+// must be given every container, stopped ones included: an image referenced by
+// a stopped container cannot be removed either, and treating it as unused
+// would offer the user a deletion that fails.
+func ImageUsage(containers []Container) map[string]int {
+	usage := make(map[string]int, len(containers))
+	for _, container := range containers {
+		if container.ImageID != "" {
+			usage[container.ImageID]++
+		}
+	}
+	return usage
 }
 
 // Tag returns the image's display name: its first repo tag, or "<none>:<none>"

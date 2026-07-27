@@ -243,6 +243,7 @@ func (a *App) renderImages(width, height int) []string {
 		{Title: "repository:tag", Width: 30, Flex: true},
 		{Title: "id", Width: 14},
 		{Title: "size", Width: 10},
+		{Title: "usage", Width: 7},
 		{Title: "created", Width: 9},
 	}
 	widths := LayoutColumns(columns, width)
@@ -262,6 +263,7 @@ func (a *App) renderImages(width, height int) []string {
 			tag,
 			style(styleMuted, image.ShortID()),
 			FormatBytes(uint64(image.Size)),
+			a.usageCell(image),
 			style(styleMuted, FormatAge(image.Created)),
 		}
 		row := RenderRow(cells, widths)
@@ -271,6 +273,28 @@ func (a *App) renderImages(width, height int) []string {
 		lines = append(lines, row)
 	}
 	return lines
+}
+
+// usageCell says whether an image is holding disk for nothing.
+//
+// The metrics panel reports a reclaimable total but names no images, which
+// leaves the figure impossible to act on. This is the column that turns it
+// into a list you can work through: "unused" marks a removal candidate, a
+// count marks one that is pinned.
+func (a *App) usageCell(image docker.Image) string {
+	style := a.screen.Style
+
+	if count := a.imageUsage[image.ID]; count > 0 {
+		// Kept short so the column stays narrow: the count is what matters,
+		// and "used" says what it counts.
+		return style(styleMuted, strconv.Itoa(count)+" used")
+	}
+	if len(a.imageUsage) == 0 {
+		// The container list has not arrived yet; claiming "unused" now
+		// would mark every image as removable.
+		return style(styleMuted, "-")
+	}
+	return style(styleWarning, "unused")
 }
 
 func (a *App) renderVolumes(width, height int) []string {
@@ -467,7 +491,7 @@ func (a *App) contextHints() string {
 	case ViewCompose:
 		return "enter actions  l logs  u up  d down  r restart  / filter  ? help"
 	case ViewImages:
-		return "D remove  P prune  / filter  ? help"
+		return "D remove  P prune  u unused only  / filter  ? help"
 	case ViewVolumes:
 		return "D remove  P prune  / filter  ? help"
 	case ViewNetworks:
@@ -514,6 +538,18 @@ func (a *App) contextState() string {
 		}
 		if a.view == ViewContainers && a.sortKey != SortDefault {
 			parts = append(parts, "sort:"+a.sortKey.Label())
+		}
+		if a.view == ViewImages {
+			if a.unusedImagesOnly {
+				parts = append(parts, "unused only")
+			}
+			// The panel's reclaimable figure is meaningless without a way
+			// to find the images behind it; naming the total here ties the
+			// two together.
+			if count, reclaimable := a.unusedImages(); count > 0 {
+				parts = append(parts, fmt.Sprintf("%d unused · %s reclaimable",
+					count, FormatBytes(uint64(reclaimable))))
+			}
 		}
 		if a.showAll {
 			parts = append(parts, "all")
