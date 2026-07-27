@@ -136,19 +136,35 @@ func (a *App) renderContainers(width, height int) []string {
 	return lines
 }
 
-// stateCell renders a container's state with its healthcheck marker and, for
-// a container that looks unwell, how many times it has restarted.
+// stateCell renders a container's state with everything the word alone hides:
+// the code it exited with, its healthcheck marker, and how many times it has
+// restarted.
 //
-// A service crash-looping every thirty seconds otherwise renders identically
-// to one that has been up for a month: both say "up", because the daemon
-// reports the state of the current attempt.
+// Each covers a different blind spot. "exited" does not distinguish a clean
+// shutdown from an out-of-memory kill. "up" does not distinguish a service
+// that has run for a month from one crash-looping every thirty seconds, since
+// the daemon reports the state of the current attempt. And a failing
+// healthcheck is invisible in the state entirely.
 func (a *App) stateCell(container docker.Container) string {
 	style := a.screen.Style
 	cell := style(stateStyle(container.State), StateLabel(container.State))
 
-	if glyph := healthGlyph(container.Health()); glyph != "" {
+	// A stopped container's exit code replaces the label: "exit 137" says
+	// strictly more than "exited". A zero stays muted so only failures draw
+	// the eye.
+	if code, known := container.ExitCode(); known && !container.Running() {
+		if code == 0 {
+			cell = style(styleMuted, "exit 0")
+		} else {
+			cell = style(tui.Foreground(colourRed), "exit "+strconv.Itoa(code))
+		}
+	} else if glyph := healthGlyph(container.Health()); glyph != "" {
 		cell += " " + style(healthStyle(container.Health()), glyph)
 	}
+
+	// The restart count applies either way. A container that crash-looped
+	// forty times and finally stayed down is precisely the case where both
+	// halves matter.
 	if count := a.restartCounts[container.ID]; count > 0 {
 		// Capped so the column has a fixed worst case: past a hundred
 		// restarts the exact figure tells you nothing the cap does not.
@@ -368,9 +384,19 @@ func (a *App) renderStatusBar(width int) string {
 
 	left := " " + a.contextHints()
 	right := a.contextState() + " "
-	gap := width - tui.VisibleWidth(left) - tui.VisibleWidth(right)
+
+	// When the two do not fit, the hints give way rather than the state.
+	// Hints are a reminder of keys the user can also get from "?", while
+	// the right side carries information found nowhere else on screen —
+	// the filter in effect, the position, why the selected container died.
+	rightWidth := tui.VisibleWidth(right)
+	if rightWidth >= width {
+		return style(styleMuted, tui.TruncateEllipsis(right, width))
+	}
+	gap := width - tui.VisibleWidth(left) - rightWidth
 	if gap < 1 {
-		return style(styleMuted, tui.TruncateEllipsis(left, width))
+		left = tui.TruncateEllipsis(left, width-rightWidth-1)
+		gap = width - tui.VisibleWidth(left) - rightWidth
 	}
 	return style(styleMuted, left) + strings.Repeat(" ", gap) + style(styleMuted, right)
 }
@@ -417,6 +443,18 @@ func (a *App) contextState() string {
 	case ModeInspect:
 		parts = append(parts, a.inspectTitle)
 	default:
+		// Explain a non-zero exit for the selected container. 137 and 143
+		// are both "stopped" to the daemon but mean very different things,
+		// and the bare number does not say which.
+		if a.view == ViewContainers {
+			if container, ok := a.selectedContainer(); ok && !container.Running() {
+				if code, known := container.ExitCode(); known && code != 0 {
+					if reason := docker.ExitReason(code); reason != "" {
+						parts = append(parts, reason)
+					}
+				}
+			}
+		}
 		if a.filter != "" {
 			parts = append(parts, "filter:"+a.filter)
 		}

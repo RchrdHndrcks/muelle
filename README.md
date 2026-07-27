@@ -151,6 +151,21 @@ free to read. Restart counts need one inspect call each, so they are fetched
 only for containers that already look unwell (restarting, unhealthy or dead).
 On a healthy host that list is empty and costs nothing.
 
+## Exit codes
+
+A stopped container shows what it exited with, so a clean shutdown is
+distinguishable from a kill at a glance:
+
+```
+worker      exit 0      stopped cleanly, shown muted
+api         exit 137    killed — usually the OOM killer
+scraper     exit 255    abnormal termination
+```
+
+Selecting a container that failed puts the meaning in the status bar
+(`SIGKILL (often out of memory)`). `137` and `143` are both just "stopped" to
+the daemon, and the bare number does not say which happened.
+
 ## The exec menu
 
 This is the feature the tool exists for. Press `x` on a container and muelle
