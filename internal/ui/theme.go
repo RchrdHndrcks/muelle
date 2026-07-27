@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/RchrdHndrcks/muelle/internal/docker"
+	"github.com/RchrdHndrcks/muelle/internal/logfmt"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
 )
 
@@ -22,19 +23,21 @@ const (
 
 // Styles used across the views.
 var (
-	styleHeader    = tui.Join(tui.StyleBold, tui.Foreground(colourWhite), tui.Background(colourDark))
-	styleTabActive = tui.Join(tui.StyleBold, tui.Foreground(colourWhite))
-	styleTabIdle   = tui.Foreground(colourGrey)
-	styleColumn    = tui.Join(tui.StyleBold, tui.Foreground(colourGrey))
-	styleSelected  = tui.Join(tui.Background(colourDark), tui.Foreground(colourWhite))
-	styleMuted     = tui.Foreground(colourGrey)
-	styleError     = tui.Foreground(colourRed)
-	styleSuccess   = tui.Foreground(colourGreen)
-	styleWarning   = tui.Foreground(colourYellow)
-	styleAccent    = tui.Foreground(colourBlue)
-	styleKey       = tui.Join(tui.StyleBold, tui.Foreground(colourPurple))
-	styleStderr    = tui.Foreground(colourRed)
-	styleTimestamp = tui.Foreground(colourGrey)
+	styleHeader     = tui.Join(tui.StyleBold, tui.Foreground(colourWhite), tui.Background(colourDark))
+	styleTabActive  = tui.Join(tui.StyleBold, tui.Foreground(colourWhite))
+	styleTabIdle    = tui.Foreground(colourGrey)
+	styleColumn     = tui.Join(tui.StyleBold, tui.Foreground(colourGrey))
+	styleSelected   = tui.Join(tui.Background(colourDark), tui.Foreground(colourWhite))
+	styleMuted      = tui.Foreground(colourGrey)
+	styleError      = tui.Foreground(colourRed)
+	styleSuccess    = tui.Foreground(colourGreen)
+	styleWarning    = tui.Foreground(colourYellow)
+	styleAccent     = tui.Foreground(colourBlue)
+	styleKey        = tui.Join(tui.StyleBold, tui.Foreground(colourPurple))
+	styleStderr     = tui.Foreground(colourRed)
+	styleTimestamp  = tui.Foreground(colourGrey)
+	styleFieldKey   = tui.Foreground(colourBlue)
+	styleFieldValue = tui.Foreground(colourGrey)
 )
 
 // stateStyle maps a container state to the colour that conveys it at a glance:
@@ -95,6 +98,26 @@ func healthGlyph(health docker.Health) string {
 		return "…"
 	default:
 		return ""
+	}
+}
+
+// levelStyle colours a log severity.
+//
+// Only the two that mean something is wrong get a strong colour. Painting INFO
+// green as well would leave a healthy log fully coloured, and the point of the
+// colouring is that the eye lands on the exceptions.
+func levelStyle(level logfmt.Level) tui.Style {
+	switch level {
+	case logfmt.LevelFatal:
+		return tui.Join(tui.StyleBold, tui.Foreground(colourRed))
+	case logfmt.LevelError:
+		return tui.Foreground(colourRed)
+	case logfmt.LevelWarn:
+		return tui.Foreground(colourYellow)
+	case logfmt.LevelDebug, logfmt.LevelTrace:
+		return tui.Foreground(colourGrey)
+	default:
+		return tui.Foreground(colourGrey)
 	}
 }
 

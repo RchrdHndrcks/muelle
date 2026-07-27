@@ -446,7 +446,7 @@ func (a *App) runPrune(ctx context.Context, what string, prune func(context.Cont
 func (a *App) handleLogsKey(ctx context.Context, key tui.Key) bool {
 	_, height := a.screen.Size()
 	viewport := height - 2
-	total := len(RenderLogs(a.logs.Lines(a.logFilter), a.screenWidth(), a.logWrap, a.logStamps, a.screen.Style))
+	total := len(RenderLogs(a.logs.Lines(a.logFilter), a.logOptions(a.screenWidth()), a.screen.Style))
 
 	switch {
 	case key.Type == tui.KeyEscape, key.IsRune('q'):
@@ -475,6 +475,9 @@ func (a *App) handleLogsKey(ctx context.Context, key tui.Key) bool {
 	case key.IsRune('t'):
 		a.logStamps = !a.logStamps
 		a.setStatus("timestamps %s", onOff(a.logStamps))
+	case key.IsRune('F'):
+		a.logFormat = !a.logFormat
+		a.setStatus("formatting %s", onOff(a.logFormat))
 	case key.IsRune('/'):
 		a.overlay = NewInput("Filter logs", "match:", a.logFilter, func(value any) {
 			filter, _ := value.(string)

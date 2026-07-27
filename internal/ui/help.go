@@ -64,6 +64,7 @@ var helpSections = []helpSection{
 		{"f", "toggle follow (scrolling up pauses it)"},
 		{"w", "toggle wrapping"},
 		{"t", "toggle timestamps"},
+		{"F", "toggle formatting (structured lines as fields)"},
 		{"/", "filter lines"},
 		{"c", "clear the buffer"},
 		{"Esc, q", "back to the list"},

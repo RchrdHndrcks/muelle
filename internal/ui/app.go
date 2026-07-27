@@ -112,12 +112,14 @@ type App struct {
 	status  status
 
 	// Log viewer state.
-	logs        *LogBuffer
-	logPager    *Pager
-	logTitle    string
-	logFilter   string
-	logWrap     bool
-	logStamps   bool
+	logs      *LogBuffer
+	logPager  *Pager
+	logTitle  string
+	logFilter string
+	logWrap   bool
+	logStamps bool
+	// logFormat renders structured lines as their parts rather than raw.
+	logFormat   bool
 	logCancel   context.CancelFunc
 	logToken    int
 	logStreamed bool
