@@ -166,6 +166,30 @@ Selecting a container that failed puts the meaning in the status bar
 (`SIGKILL (often out of memory)`). `137` and `143` are both just "stopped" to
 the daemon, and the bare number does not say which happened.
 
+## Reclaiming disk
+
+`P` opens a system prune with three scopes, from least to most destructive:
+
+```
+▸ prune unused data (about 6.9GiB)      stopped containers, unused networks,
+                                        dangling images, build cache
+  prune unused data and all unused images
+  prune everything including volumes    DATA WILL BE LOST
+```
+
+The estimate comes from the same measurement the metrics panel shows, so the
+number you are acting on is the one you were looking at.
+
+Volumes are a separate scope rather than a flag, because they are the only
+prune target that cannot be rebuilt or re-pulled. Choosing that scope is a
+deliberate act, and the confirmation says so.
+
+The Engine API has no single prune endpoint — the CLI calls each object type's
+in turn, and so does this, containers first so the images and networks they
+held become collectable in the same pass. A failing step is recorded and the
+rest still run: a prune that stops halfway would leave you unsure what state
+the host is in.
+
 ## The exec menu
 
 This is the feature the tool exists for. Press `x` on a container and muelle
