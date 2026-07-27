@@ -94,6 +94,73 @@ func TestTabCyclesThroughViews(t *testing.T) {
 	}
 }
 
+// Left and right are bound alongside Tab so the arrow keys alone are enough
+// to move around.
+func TestArrowKeysCycleViewsLikeTab(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, typeKey(tui.KeyRight))
+	if app.view != ViewCompose {
+		t.Errorf("got %v after right, want the next view", app.view.Title())
+	}
+
+	press(app, typeKey(tui.KeyLeft))
+	if app.view != ViewContainers {
+		t.Errorf("got %v after left, want the previous view", app.view.Title())
+	}
+}
+
+func TestArrowKeysWrapAroundTheViewList(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, typeKey(tui.KeyLeft))
+	if app.view != ViewVolumes {
+		t.Errorf("got %v, want left from the first view to wrap to the last", app.view.Title())
+	}
+
+	press(app, typeKey(tui.KeyRight))
+	if app.view != ViewContainers {
+		t.Errorf("got %v, want right from the last view to wrap to the first", app.view.Title())
+	}
+}
+
+// Up and down must keep moving the selection, not the view.
+func TestVerticalArrowsStillMoveSelection(t *testing.T) {
+	app := loadedApp(t)
+
+	press(app, typeKey(tui.KeyDown))
+
+	if app.view != ViewContainers {
+		t.Errorf("down changed the view to %v", app.view.Title())
+	}
+	if app.selected() != 1 {
+		t.Errorf("got selection %d, want down to move it", app.selected())
+	}
+}
+
+func TestCapitalSTogglesSystemPanel(t *testing.T) {
+	app := loadedApp(t)
+	before := app.showSystem
+
+	press(app, runeKey('S'))
+
+	if app.showSystem == before {
+		t.Error("S should toggle the host metrics panel")
+	}
+}
+
+// Lower-case s starts a container; the toggle must not steal it.
+func TestLowercaseSStillStartsContainer(t *testing.T) {
+	app := loadedApp(t)
+	panelBefore := app.showSystem
+
+	press(app, runeKey('s'))
+
+	if app.showSystem != panelBefore {
+		t.Error("s must not toggle the panel; that is S")
+	}
+}
+
 func TestQuestionMarkTogglesHelp(t *testing.T) {
 	app := loadedApp(t)
 

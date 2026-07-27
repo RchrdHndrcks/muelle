@@ -82,6 +82,13 @@ type App struct {
 
 	// showAll toggles between running-only and every container.
 	showAll bool
+	// metrics feeds the host summary panel.
+	metrics HostMetrics
+	// showSystem controls whether that panel is drawn.
+	showSystem bool
+	// diskMeasuredAt and measuringDisk pace the expensive /system/df call.
+	diskMeasuredAt time.Time
+	measuringDisk  bool
 	// filter narrows the current list by substring.
 	filter string
 
@@ -140,6 +147,7 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		inspectPager: NewPager(false),
 		logWrap:      true,
 		logStamps:    false,
+		showSystem:   cfg.SystemPanel,
 		events:       make(chan event, 64),
 		quit:         make(chan struct{}),
 		dockerCLI:    DockerCLIAvailable(),
@@ -268,6 +276,12 @@ func (a *App) frame(width, height int) []string {
 		bodyHeight = 1
 	}
 
+	// The system panel eats into the list, never the header or status bar,
+	// and is dropped entirely when the terminal is too short to leave a
+	// usable list behind it.
+	panel := a.systemPanel(width, bodyHeight)
+	bodyHeight -= len(panel)
+
 	var body []string
 	switch a.mode {
 	case ModeLogs:
@@ -287,11 +301,23 @@ func (a *App) frame(width, height int) []string {
 		lines = append(lines, "")
 	}
 
+	lines = append(lines, panel...)
 	lines = append(lines, a.renderStatusBar(width))
 
 	if a.overlay != nil {
 		overlay, _, _ := a.overlay.Render(a.screen, width, height)
 		lines = mergeOverlay(lines, overlay, height)
+	}
+
+	// Clip every row to the frame. Screen.Render would do this on the way
+	// out, but Frame is also the headless dump path, which prints the rows
+	// directly — an over-long row there wraps and pushes the whole frame
+	// out of shape. Truncating here keeps one guarantee for both callers:
+	// a frame is exactly height rows of at most width cells.
+	for i, line := range lines {
+		if tui.VisibleWidth(line) > width {
+			lines[i] = tui.TruncateEllipsis(line, width)
+		}
 	}
 	return lines
 }
