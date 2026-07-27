@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -18,7 +19,56 @@ import (
 )
 
 // version is stamped at build time with -ldflags "-X main.version=...".
-var version = "dev"
+var version = ""
+
+// buildVersion describes the running binary.
+//
+// A release build stamps version through ldflags, but "go install" does not,
+// and the module version the toolchain records is then the only evidence of
+// what is actually running. Reporting it matters more than it sounds: a stale
+// binary looks exactly like a bug that was never fixed, and without this there
+// is no way to tell the two apart from inside the program.
+func buildVersion() string {
+	if version != "" {
+		return version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Version == "" {
+		return "unknown"
+	}
+	if info.Main.Version == "(devel)" {
+		// A local build: the module version is meaningless, but the
+		// revision the toolchain stamped in is not.
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.revision" && len(setting.Value) >= 7 {
+				return "devel-" + setting.Value[:7]
+			}
+		}
+	}
+	return info.Main.Version
+}
+
+// shortBuildVersion condenses the build for the header, where a
+// forty-character pseudo-version would crowd out everything else. A tagged
+// release keeps its tag; anything else shows the commit.
+func shortBuildVersion() string {
+	full := buildVersion()
+	if !strings.HasPrefix(full, "v0.0.0-") && !strings.HasPrefix(full, "devel-") {
+		return full
+	}
+	trimmed := strings.TrimSuffix(full, "+dirty")
+	if index := strings.LastIndex(trimmed, "-"); index >= 0 && index+1 < len(trimmed) {
+		revision := trimmed[index+1:]
+		if len(revision) > 7 {
+			revision = revision[:7]
+		}
+		if strings.HasSuffix(full, "+dirty") {
+			return revision + "+dirty"
+		}
+		return revision
+	}
+	return full
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -39,7 +89,7 @@ func run() error {
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Println("muelle", version)
+		fmt.Println("muelle", buildVersion())
 		return nil
 	}
 
@@ -145,6 +195,7 @@ func dump(ctx context.Context, cfg config.Config, client *docker.Client, view ui
 	app := ui.New(cfg, client, screen, nil)
 	app.SetShowAll(all)
 	app.SetView(view)
+	app.SetBuild(shortBuildVersion())
 
 	if err := app.LoadOnce(ctx); err != nil {
 		return err
@@ -219,6 +270,7 @@ func interactive(ctx context.Context, cfg config.Config, client *docker.Client, 
 	app := ui.New(cfg, client, screen, runner)
 	app.SetShowAll(all)
 	app.SetView(view)
+	app.SetBuild(shortBuildVersion())
 
 	resize := watchResize(ctx)
 

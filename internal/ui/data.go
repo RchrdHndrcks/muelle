@@ -391,6 +391,9 @@ func (a *App) SetShowAll(showAll bool) { a.showAll = showAll }
 // SetView switches the active view, for dump mode.
 func (a *App) SetView(view View) { a.view = view }
 
+// SetBuild records which build of muelle is running, for the header.
+func (a *App) SetBuild(build string) { a.build = build }
+
 // runAction performs a lifecycle call in the background and reports the
 // outcome. Running it off the loop keeps the UI responsive while the daemon
 // takes its time stopping a container.
