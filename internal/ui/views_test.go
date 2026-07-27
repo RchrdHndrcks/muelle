@@ -78,18 +78,41 @@ func TestStateCellOmitsZeroRestartCount(t *testing.T) {
 }
 
 // The state column must still fit its width once markers are appended.
+// The cell now composes an exit code, a health marker and a restart count, so
+// the column has to fit whichever combination is widest.
 func TestStateCellFitsItsColumn(t *testing.T) {
+	const stateColumnWidth = 13
+
 	app := newTestApp(t)
 	app.restartCounts = map[string]int{"x": 999}
 
-	cell := app.stateCell(docker.Container{
-		ID: "x", State: "restarting", Status: "Restarting (1) 2 seconds ago (unhealthy)",
-	})
-
-	if width := visibleWidthOf(cell); width > 13 {
-		t.Errorf("got %q at %d cells, want it to fit the 13-cell state column", cell, width)
+	cases := map[string]docker.Container{
+		"crash-looping and unhealthy": {
+			ID: "x", State: "restarting", Status: "Restarting (1) 2 seconds ago (unhealthy)",
+		},
+		"stopped after many restarts": {
+			ID: "x", State: "exited", Status: "Exited (255) 2 months ago",
+		},
+		"long state with a marker": {
+			ID: "x", State: "removing", Status: "Removal In Progress",
+		},
+		"plain running": {
+			ID: "other", State: "running", Status: "Up 8 weeks",
+		},
 	}
-	if !strings.Contains(cell, "×99+") {
-		t.Errorf("got %q, want the count capped rather than truncated away", cell)
+
+	for name, container := range cases {
+		cell := app.stateCell(container)
+		if width := visibleWidthOf(cell); width > stateColumnWidth {
+			t.Errorf("%s: got %q at %d cells, want at most %d",
+				name, cell, width, stateColumnWidth)
+		}
+	}
+
+	// The cap is what keeps the worst case bounded; without it the count
+	// would be ellipsized away by the column it overflowed.
+	capped := app.stateCell(docker.Container{ID: "x", State: "restarting"})
+	if !strings.Contains(capped, "×99+") {
+		t.Errorf("got %q, want the count capped rather than truncated away", capped)
 	}
 }
