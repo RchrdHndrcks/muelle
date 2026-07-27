@@ -34,6 +34,7 @@ var helpSections = []helpSection{
 		{"q, Ctrl-c", "quit"},
 	}},
 	{"Containers", []helpEntry{
+		{"state column", "✓ healthy  ✗ unhealthy  … starting  ×N restarts"},
 		{"Enter, i", "inspect (full JSON)"},
 		{"l", "follow logs"},
 		{"x", "exec menu (database clients, shells)"},

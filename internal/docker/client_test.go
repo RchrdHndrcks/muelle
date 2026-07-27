@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -59,17 +60,55 @@ func TestNewRejectsUnsupportedScheme(t *testing.T) {
 	}
 }
 
+// recorder collects the paths a fake daemon was asked for.
+//
+// It is mutex-guarded because some client methods fan out over several
+// goroutines, so the handler runs concurrently.
+type recorder struct {
+	mu    sync.Mutex
+	paths []string
+}
+
+func (r *recorder) add(path string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.paths = append(r.paths, path)
+}
+
+// All returns a copy of the recorded paths.
+func (r *recorder) All() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.paths...)
+}
+
+// Len returns how many requests were recorded.
+func (r *recorder) Len() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.paths)
+}
+
+// First returns the first recorded path, or "" if there was none.
+func (r *recorder) First() string {
+	all := r.All()
+	if len(all) == 0 {
+		return ""
+	}
+	return all[0]
+}
+
 // newTestClient starts a fake daemon and returns a client pointed at it along
 // with a record of the paths it was asked for.
-func newTestClient(t *testing.T, handler http.HandlerFunc) (*Client, *[]string) {
+func newTestClient(t *testing.T, handler http.HandlerFunc) (*Client, *recorder) {
 	t.Helper()
-	var requested []string
+	requested := &recorder{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requested = append(requested, r.URL.String())
+		requested.add(r.URL.String())
 		handler(w, r)
 	}))
 	t.Cleanup(server.Close)
-	return newForTest(server.URL), &requested
+	return newForTest(server.URL), requested
 }
 
 func TestContainersDecodesAndSorts(t *testing.T) {
@@ -97,7 +136,7 @@ func TestContainersDecodesAndSorts(t *testing.T) {
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("got order %v, want %v (project first, standalone last)", names, want)
 	}
-	if got := (*requested)[0]; got != "/containers/json?all=1" {
+	if got := requested.First(); got != "/containers/json?all=1" {
 		t.Errorf("got request %q, want all=1", got)
 	}
 }
@@ -110,7 +149,7 @@ func TestContainersOmitsAllWhenOnlyRunningWanted(t *testing.T) {
 	if _, err := client.Containers(context.Background(), false); err != nil {
 		t.Fatalf("Containers: %v", err)
 	}
-	if got := (*requested)[0]; got != "/containers/json" {
+	if got := requested.First(); got != "/containers/json" {
 		t.Errorf("got request %q, want no query string", got)
 	}
 }
@@ -123,7 +162,7 @@ func TestStopSendsTimeout(t *testing.T) {
 	if err := client.Stop(context.Background(), "abc", 7); err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
-	if got := (*requested)[0]; got != "/containers/abc/stop?t=7" {
+	if got := requested.First(); got != "/containers/abc/stop?t=7" {
 		t.Errorf("got request %q, want the timeout in the query", got)
 	}
 }

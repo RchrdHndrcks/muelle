@@ -74,6 +74,9 @@ type App struct {
 	images     []docker.Image
 	volumes    []docker.Volume
 	stats      map[string]docker.Stat
+	// restartCounts is populated only for containers that look unwell;
+	// see docker.Client.RestartCounts for why it is not fetched for all.
+	restartCounts map[string]int
 
 	// Per-view selection and scroll, kept separately so switching tabs
 	// returns you to where you were.
@@ -137,20 +140,21 @@ const statusLifetime = 6 * time.Second
 // New creates an app bound to a daemon and a screen.
 func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *Runner) *App {
 	return &App{
-		config:       cfg,
-		docker:       client,
-		screen:       screen,
-		runner:       runner,
-		stats:        make(map[string]docker.Stat),
-		logs:         NewLogBuffer(5000),
-		logPager:     NewPager(true),
-		inspectPager: NewPager(false),
-		logWrap:      true,
-		logStamps:    false,
-		showSystem:   cfg.SystemPanel,
-		events:       make(chan event, 64),
-		quit:         make(chan struct{}),
-		dockerCLI:    DockerCLIAvailable(),
+		config:        cfg,
+		docker:        client,
+		screen:        screen,
+		runner:        runner,
+		stats:         make(map[string]docker.Stat),
+		restartCounts: make(map[string]int),
+		logs:          NewLogBuffer(5000),
+		logPager:      NewPager(true),
+		inspectPager:  NewPager(false),
+		logWrap:       true,
+		logStamps:     false,
+		showSystem:    cfg.SystemPanel,
+		events:        make(chan event, 64),
+		quit:          make(chan struct{}),
+		dockerCLI:     DockerCLIAvailable(),
 	}
 }
 

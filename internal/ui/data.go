@@ -124,6 +124,12 @@ func (e diskUsageLoaded) apply(a *App) {
 	a.diskMeasuredAt = time.Now()
 }
 
+// restartCountsLoaded carries restart counts for the containers that looked
+// worth inspecting.
+type restartCountsLoaded struct{ counts map[string]int }
+
+func (e restartCountsLoaded) apply(a *App) { a.restartCounts = e.counts }
+
 // actionDone reports the outcome of a lifecycle action.
 type actionDone struct {
 	message string
@@ -224,6 +230,19 @@ func (a *App) refresh(ctx context.Context) {
 			compose.Discover(composeDirs),
 		)
 		a.post(containersLoaded{containers: containers, projects: projects})
+
+		// Restart counts need an inspect each, so only containers that
+		// already look unwell are worth the call. On a healthy host this
+		// list is empty and costs nothing.
+		var unwell []string
+		for _, c := range containers {
+			if c.NeedsAttention() {
+				unwell = append(unwell, c.ID)
+			}
+		}
+		if len(unwell) > 0 {
+			a.post(restartCountsLoaded{counts: a.docker.RestartCounts(fetchCtx, unwell)})
+		}
 
 		if wantStats {
 			var running []string
