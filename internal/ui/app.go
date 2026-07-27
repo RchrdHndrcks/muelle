@@ -91,6 +91,8 @@ type App struct {
 	measuringDisk  bool
 	// filter narrows the current list by substring.
 	filter string
+	// sortKey orders the container list.
+	sortKey SortKey
 
 	overlay *Overlay
 	status  status

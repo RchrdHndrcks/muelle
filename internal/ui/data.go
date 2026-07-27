@@ -365,20 +365,32 @@ func (refreshRequested) apply(a *App) {
 	a.refresh(context.Background())
 }
 
-// filteredContainers returns the containers matching the current filter.
+// filteredContainers returns the containers matching the current filter, in
+// the current sort order.
 func (a *App) filteredContainers() []docker.Container {
-	if a.filter == "" {
-		return a.containers
-	}
-	needle := strings.ToLower(a.filter)
-	matched := make([]docker.Container, 0, len(a.containers))
-	for _, c := range a.containers {
-		haystack := strings.ToLower(c.Name() + " " + c.Image + " " + c.Project() + " " + c.State)
-		if strings.Contains(haystack, needle) {
-			matched = append(matched, c)
+	matched := a.containers
+	if a.filter != "" {
+		needle := strings.ToLower(a.filter)
+		matched = make([]docker.Container, 0, len(a.containers))
+		for _, c := range a.containers {
+			haystack := strings.ToLower(c.Name() + " " + c.Image + " " + c.Project() + " " + c.State)
+			if strings.Contains(haystack, needle) {
+				matched = append(matched, c)
+			}
 		}
 	}
-	return matched
+
+	if a.sortKey == SortDefault {
+		// The daemon response is already in this order, so sorting it
+		// again would only cost a copy.
+		return matched
+	}
+	// Copy before sorting: a.containers is the refresh result and sorting
+	// it in place would reorder the model behind the view.
+	ordered := make([]docker.Container, len(matched))
+	copy(ordered, matched)
+	SortContainers(ordered, a.sortKey, a.stats)
+	return ordered
 }
 
 // filteredProjects returns the projects matching the current filter.

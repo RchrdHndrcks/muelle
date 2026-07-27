@@ -360,7 +360,7 @@ func (a *App) contextHints() string {
 	}
 	switch a.view {
 	case ViewContainers:
-		return "enter inspect  l logs  x exec  s start  t stop  r restart  D remove  a all  S system  / filter  ? help"
+		return "enter inspect  l logs  x exec  s start  t stop  r restart  D remove  a all  o sort  S system  / filter  ? help"
 	case ViewCompose:
 		return "enter actions  l logs  u up  d down  r restart  / filter  ? help"
 	case ViewImages:
@@ -392,6 +392,9 @@ func (a *App) contextState() string {
 	default:
 		if a.filter != "" {
 			parts = append(parts, "filter:"+a.filter)
+		}
+		if a.view == ViewContainers && a.sortKey != SortDefault {
+			parts = append(parts, "sort:"+a.sortKey.Label())
 		}
 		if a.showAll {
 			parts = append(parts, "all")
