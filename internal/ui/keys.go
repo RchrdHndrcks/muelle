@@ -169,8 +169,11 @@ func (a *App) handleListKey(ctx context.Context, key tui.Key) bool {
 			// find next time rather than a setting to reapply on every
 			// launch.
 			chosen := a.sortKey.Label()
-			a.remember(func(c *config.Config) { c.Sort = chosen })
+			// Status first: remember reports a failed save by replacing
+			// it, and a save that did not happen is the more important
+			// of the two things to say.
 			a.setStatus("sorted by %s", chosen)
+			a.remember(func(c *config.Config) { c.Sort = chosen })
 			return true
 		}
 
