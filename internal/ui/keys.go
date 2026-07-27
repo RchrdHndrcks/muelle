@@ -271,8 +271,9 @@ func (a *App) handleContainerKey(ctx context.Context, key tui.Key) bool {
 		a.openProcesses(ctx, container)
 
 	case key.IsRune('e'):
-		// Straight to a shell, skipping the menu.
-		a.execInContainer(container, []string{"sh", "-c", "command -v bash >/dev/null && exec bash || exec sh"})
+		// Straight to a shell, skipping the menu. Same probe the menu
+		// entry uses, so the two cannot drift apart.
+		a.execInContainer(container, []string{"sh", "-c", quickcmd.ShellProbe})
 
 	case key.IsRune('s'):
 		a.runAction(ctx, "started "+name, func(c context.Context) error {

@@ -24,13 +24,17 @@ type Command struct {
 	Sensitive bool
 }
 
-// String renders the command for display, masking credentials.
+// String renders the command for display, masking credentials and hiding the
+// shell probe, which is plumbing rather than something the reader chose.
 //
 // The menu is on screen, and screens get shared and screenshotted, so a
 // password must never be rendered. Two shapes need covering: attached
 // ("-psecret", as MySQL requires) and detached ("-p", "secret", as mongosh and
 // redis-cli take it).
 func (c Command) String() string {
+	if len(c.Argv) == 3 && c.Argv[2] == ShellProbe {
+		return "bash, or sh if unavailable"
+	}
 	if !c.Sensitive {
 		return strings.Join(c.Argv, " ")
 	}
@@ -54,12 +58,22 @@ func (c Command) String() string {
 // proportional: the length of a password is itself information.
 func mask(string) string { return "********" }
 
+// ShellProbe runs bash when the image has it and sh otherwise, deciding inside
+// the container where the answer is actually known.
+//
+// Offering bash directly is wrong far more often than it is right. Most images
+// are built on Alpine or a slim base and carry no bash at all, so a menu entry
+// invoking it simply fails — and it was the first entry, so it was the one
+// people picked. Deciding in-container costs nothing and cannot guess wrong.
+const ShellProbe = "command -v bash >/dev/null 2>&1 && exec bash || exec sh"
+
 // shells are always offered last, so there is a fallback when the tailored
-// suggestions do not fit. bash first: if the image has it, it is the nicer
-// prompt; sh is guaranteed on practically every image.
+// suggestions do not fit.
 var shells = []Command{
-	{Label: "bash shell", Argv: []string{"bash"}},
-	{Label: "sh shell", Argv: []string{"sh"}},
+	{Label: "shell", Argv: []string{"sh", "-c", ShellProbe}},
+	// Explicit sh as well, for when the shell itself is the thing being
+	// investigated and bash would confuse the question.
+	{Label: "sh (plain)", Argv: []string{"sh"}},
 }
 
 // Suggest returns candidate commands for a container, most specific first,

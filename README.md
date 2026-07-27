@@ -218,8 +218,13 @@ it all along. It is masked on screen and passed to the real command intact.
 
 Recognised images: MySQL / MariaDB / Percona, PostgreSQL (and pgvector,
 TimescaleDB, PostGIS), Redis / Valkey, MongoDB, RabbitMQ, nginx, Node, Python.
-Everything else gets `bash` and `sh`, which are also always offered as a
-fallback.
+
+Every container also gets a `shell` entry, which runs bash where the image has
+it and sh otherwise — decided inside the container rather than guessed. Most
+images are Alpine- or slim-based and carry no bash at all, so invoking it
+directly fails on the majority of them. A container built from scratch or on a
+distroless base has no shell whatsoever; muelle says so rather than passing on
+the runtime's error.
 
 ## Processes inside a container
 
