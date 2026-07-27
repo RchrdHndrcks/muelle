@@ -62,6 +62,8 @@ func (a *App) renderList(width, height int) []string {
 		return a.renderImages(width, height)
 	case ViewVolumes:
 		return a.renderVolumes(width, height)
+	case ViewNetworks:
+		return a.renderNetworks(width, height)
 	}
 	return nil
 }
@@ -270,6 +272,52 @@ func (a *App) renderVolumes(width, height int) []string {
 	return lines
 }
 
+func (a *App) renderNetworks(width, height int) []string {
+	style := a.screen.Style
+	networks := a.filteredNetworks()
+
+	if len(networks) == 0 {
+		return a.emptyState(width, height, "No networks.")
+	}
+
+	columns := []Column{
+		{Title: "name", Width: 28, Flex: true},
+		{Title: "driver", Width: 8},
+		{Title: "scope", Width: 7},
+		{Title: "subnet", Width: 20},
+		{Title: "project", Width: 18},
+	}
+	widths := LayoutColumns(columns, width)
+
+	lines := []string{style(styleColumn, RenderHeader(columns, widths))}
+	selected := a.selected()
+	start, end, offset := visibleWindow(len(networks), height-1, selected, a.offset[ViewNetworks])
+	a.offset[ViewNetworks] = offset
+
+	for i := start; i < end; i++ {
+		network := networks[i]
+		name := network.Name
+		if network.Predefined() {
+			// The daemon's own networks cannot be removed, so they are
+			// dimmed to set them apart from the user's.
+			name = style(styleMuted, name)
+		}
+		cells := []string{
+			name,
+			style(styleMuted, network.Driver),
+			style(styleMuted, network.Scope),
+			network.Subnet(),
+			style(styleMuted, network.Project()),
+		}
+		row := RenderRow(cells, widths)
+		if i == selected {
+			row = style(styleSelected, tui.Pad(row, width))
+		}
+		lines = append(lines, row)
+	}
+	return lines
+}
+
 // emptyState renders a centred message for a list with nothing in it.
 func (a *App) emptyState(width, height int, message string) []string {
 	style := a.screen.Style
@@ -366,6 +414,8 @@ func (a *App) contextHints() string {
 	case ViewImages:
 		return "D remove  P prune  / filter  ? help"
 	case ViewVolumes:
+		return "D remove  P prune  / filter  ? help"
+	case ViewNetworks:
 		return "D remove  P prune  / filter  ? help"
 	}
 	return "? help"

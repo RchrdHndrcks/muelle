@@ -113,9 +113,13 @@ func TestArrowKeysCycleViewsLikeTab(t *testing.T) {
 func TestArrowKeysWrapAroundTheViewList(t *testing.T) {
 	app := loadedApp(t)
 
+	// Named against the count rather than a specific view, so adding
+	// another view does not break the assertion.
+	last := View(viewCount - 1)
 	press(app, typeKey(tui.KeyLeft))
-	if app.view != ViewVolumes {
-		t.Errorf("got %v, want left from the first view to wrap to the last", app.view.Title())
+	if app.view != last {
+		t.Errorf("got %v, want left from the first view to wrap to %v",
+			app.view.Title(), last.Title())
 	}
 
 	press(app, typeKey(tui.KeyRight))

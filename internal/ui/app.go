@@ -21,6 +21,7 @@ const (
 	ViewCompose
 	ViewImages
 	ViewVolumes
+	ViewNetworks
 	viewCount
 )
 
@@ -35,6 +36,8 @@ func (v View) Title() string {
 		return "Images"
 	case ViewVolumes:
 		return "Volumes"
+	case ViewNetworks:
+		return "Networks"
 	default:
 		return "?"
 	}
@@ -73,6 +76,7 @@ type App struct {
 	projects   []compose.Project
 	images     []docker.Image
 	volumes    []docker.Volume
+	networks   []docker.Network
 	stats      map[string]docker.Stat
 
 	// Per-view selection and scroll, kept separately so switching tabs
@@ -349,6 +353,8 @@ func (a *App) currentLength() int {
 		return len(a.filteredImages())
 	case ViewVolumes:
 		return len(a.filteredVolumes())
+	case ViewNetworks:
+		return len(a.filteredNetworks())
 	}
 	return 0
 }
@@ -387,6 +393,15 @@ func (a *App) selectedImage() (docker.Image, bool) {
 		return docker.Image{}, false
 	}
 	return list[clamp(a.selection[ViewImages], len(list))], true
+}
+
+// selectedNetwork returns the highlighted network, if any.
+func (a *App) selectedNetwork() (docker.Network, bool) {
+	list := a.filteredNetworks()
+	if len(list) == 0 {
+		return docker.Network{}, false
+	}
+	return list[clamp(a.selection[ViewNetworks], len(list))], true
 }
 
 // selectedVolume returns the highlighted volume, if any.

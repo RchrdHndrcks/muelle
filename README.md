@@ -77,7 +77,7 @@ Press `?` in the app for the full reference.
 
 | Key | Action |
 |---|---|
-| `1` `2` `3` `4`, `Tab`, `←` `→` | switch between containers, compose, images, volumes |
+| `1` `2` `3` `4` `5`, `Tab`, `←` `→` | containers, compose, images, volumes, networks |
 | `j` `k`, `↓` `↑` | move selection |
 | `g` `G` | first / last |
 | `Ctrl-d` `Ctrl-u` | half page down / up |

@@ -84,6 +84,8 @@ func (a *App) handleGlobalKey(ctx context.Context, key tui.Key) {
 		a.switchView(ViewImages)
 	case key.IsRune('4'):
 		a.switchView(ViewVolumes)
+	case key.IsRune('5'):
+		a.switchView(ViewNetworks)
 	}
 }
 
@@ -106,6 +108,11 @@ func (a *App) switchView(view View) {
 		}
 	case ViewVolumes:
 		if len(a.volumes) == 0 {
+			a.refreshing = false
+			a.refresh(context.Background())
+		}
+	case ViewNetworks:
+		if len(a.networks) == 0 {
 			a.refreshing = false
 			a.refresh(context.Background())
 		}
@@ -157,6 +164,8 @@ func (a *App) handleListKey(ctx context.Context, key tui.Key) bool {
 		return a.handleImageKey(ctx, key)
 	case ViewVolumes:
 		return a.handleVolumeKey(ctx, key)
+	case ViewNetworks:
+		return a.handleNetworkKey(ctx, key)
 	}
 	return false
 }
@@ -323,6 +332,32 @@ func (a *App) handleVolumeKey(ctx context.Context, key tui.Key) bool {
 	case key.IsRune('P'):
 		a.confirm("Prune volumes", "Remove all volumes not used by a container? Their data will be lost.", func() {
 			a.runPrune(ctx, "volumes", a.docker.PruneVolumes)
+		})
+	default:
+		return false
+	}
+	return true
+}
+
+// handleNetworkKey handles the network view's actions.
+func (a *App) handleNetworkKey(ctx context.Context, key tui.Key) bool {
+	network, ok := a.selectedNetwork()
+	switch {
+	case key.IsRune('D') && ok:
+		if network.Predefined() {
+			// The daemon refuses these; saying so beats surfacing its
+			// error after a confirmation the user need not have answered.
+			a.setError("%s is a predefined network and cannot be removed", network.Name)
+			return true
+		}
+		a.confirm("Remove network", "Remove "+network.Name+"?", func() {
+			a.runAction(ctx, "removed "+network.Name, func(c context.Context) error {
+				return a.docker.RemoveNetwork(c, network.ID)
+			})
+		})
+	case key.IsRune('P'):
+		a.confirm("Prune networks", "Remove all networks not used by a container?", func() {
+			a.runPrune(ctx, "networks", a.docker.PruneNetworks)
 		})
 	default:
 		return false

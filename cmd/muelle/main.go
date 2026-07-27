@@ -30,7 +30,7 @@ func main() {
 func run() error {
 	var (
 		hostFlag    = flag.String("host", "", "docker daemon endpoint (default: $DOCKER_HOST, then autodetect)")
-		viewFlag    = flag.String("view", "containers", "initial view: containers, compose, images or volumes")
+		viewFlag    = flag.String("view", "containers", "initial view: containers, compose, images, volumes or networks")
 		dumpFlag    = flag.Bool("dump", false, "render a single frame to stdout and exit, for use without a terminal")
 		allFlag     = flag.Bool("all", false, "include stopped containers")
 		versionFlag = flag.Bool("version", false, "print the version and exit")
@@ -90,7 +90,7 @@ Flags:
 	flag.PrintDefaults()
 	fmt.Fprintf(os.Stderr, `
 Keys:
-  1-4 / Tab   switch views        l   logs
+  1-5 / Tab   switch views        l   logs
   j / k       move                x   exec menu (mysql, psql, redis-cli, shells)
   Enter       inspect             ?   full key reference
   q           quit
@@ -111,8 +111,10 @@ func parseView(name string) (ui.View, error) {
 		return ui.ViewImages, nil
 	case "volumes", "volume", "v":
 		return ui.ViewVolumes, nil
+	case "networks", "network", "n":
+		return ui.ViewNetworks, nil
 	default:
-		return ui.ViewContainers, fmt.Errorf("unknown view %q: expected containers, compose, images or volumes", name)
+		return ui.ViewContainers, fmt.Errorf("unknown view %q: expected containers, compose, images, volumes or networks", name)
 	}
 }
 
