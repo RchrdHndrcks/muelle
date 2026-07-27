@@ -99,8 +99,48 @@ Press `?` in the app for the full reference.
 Destructive actions always ask first, and a destructive prompt will not accept
 a stray `Enter` — it wants an explicit `y`.
 
-In the log viewer: `f` follow, `w` wrap, `t` timestamps, `/` filter, `c` clear.
-Scrolling up pauses follow; scrolling back to the bottom resumes it.
+In the log viewer: `f` follow, `w` wrap, `t` timestamps, `F` formatting,
+`/` filter, `c` clear. Scrolling up pauses follow; scrolling back to the
+bottom resumes it.
+
+## Log formatting
+
+Structured logs are written for programs to read. A Go service logging through
+`log/slog` spends ninety characters of JSON to say three words:
+
+```
+{"time":"2026-07-27T20:55:34.503644157Z","level":"INFO","msg":"user connected","user_id":"263924de","count":1}
+```
+
+The log viewer takes that apart, and lines up whatever it can:
+
+```
+20:55:34 INFO  user connected user_id=263924de count=1
+20:55:35 ERROR send failed attempt=3 err="connection refused"
+20:44:05 WARN  [MY-011810] [Server] Insecure configuration for --pid-file
+14:13:48 INFO  [1] LOG:  database system is ready to accept connections
+               classifier ready: models loaded
+```
+
+`F` switches back to exactly what the container wrote, for when the question is
+about the log format itself.
+
+Recognised: `slog`, `logrus`, `zap`, `zerolog`, `bunyan` and `pino` field
+names, timestamps written as strings or epoch seconds, and the severity
+conventions of MySQL, PostgreSQL, nginx and the Go runtime.
+
+Unstructured output is not reformatted, only scanned for a severity and a
+leading timestamp. Text whose layout was deliberate is left alone.
+
+Severity detection is deliberately conservative: only the first 64 characters
+are searched, and only for a bracketed, colon-suffixed or upper-case token. A
+message that merely mentions the word "error" is not an error, and colouring
+that would make the colouring untrustworthy — being trustworthy at a glance is
+its only job.
+
+For the same reason a parsed severity outranks the stream. Plenty of programs
+write their entire log to stderr, so treating the stream as a severity paints a
+healthy container's whole output red.
 
 ## Host metrics
 

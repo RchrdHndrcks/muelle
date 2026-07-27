@@ -416,7 +416,7 @@ func (a *App) renderLogs(width, height int) []string {
 	style := a.screen.Style
 
 	lines := a.logs.Lines(a.logFilter)
-	rows := RenderLogs(lines, width, a.logWrap, a.logStamps, style)
+	rows := RenderLogs(lines, a.logOptions(width), style)
 
 	if len(rows) == 0 {
 		message := "Waiting for output..."
@@ -431,6 +431,17 @@ func (a *App) renderLogs(width, height int) []string {
 
 	start, end := a.logPager.Window(len(rows), height)
 	return rows[start:end]
+}
+
+// logOptions gathers the log view's current settings.
+func (a *App) logOptions(width int) LogOptions {
+	return LogOptions{
+		Width:      width,
+		Wrap:       a.logWrap,
+		Timestamps: a.logStamps,
+		Format:     a.logFormat,
+		Levelled:   a.logs.Levelled(),
+	}
 }
 
 // renderInspect draws the JSON viewer.
@@ -480,7 +491,7 @@ func (a *App) renderStatusBar(width int) string {
 func (a *App) contextHints() string {
 	switch a.mode {
 	case ModeLogs:
-		return "f follow  w wrap  t timestamps  / filter  esc back  ? help"
+		return "f follow  w wrap  t timestamps  F format  / filter  esc back  ? help"
 	case ModeInspect:
 		return "j/k scroll  g/G top/bottom  esc back"
 	case ModeProcesses:

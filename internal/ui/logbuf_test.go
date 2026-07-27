@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/RchrdHndrcks/muelle/internal/docker"
+	"github.com/RchrdHndrcks/muelle/internal/logfmt"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
 )
 
@@ -22,7 +23,7 @@ func TestLogBufferKeepsLinesInOrder(t *testing.T) {
 	buffer.Append(line("first"), line("second"))
 
 	lines := buffer.Lines("")
-	if len(lines) != 2 || lines[0].Text != "first" || lines[1].Text != "second" {
+	if len(lines) != 2 || lines[0].Line.Text != "first" || lines[1].Line.Text != "second" {
 		t.Errorf("got %+v, want the lines in arrival order", lines)
 	}
 }
@@ -37,7 +38,7 @@ func TestLogBufferEvictsOldestWhenFull(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("got %d lines, want the capacity respected", len(lines))
 	}
-	if lines[0].Text != "three" || lines[2].Text != "five" {
+	if lines[0].Line.Text != "three" || lines[2].Line.Text != "five" {
 		t.Errorf("got %v, want the three most recent", texts(lines))
 	}
 	if buffer.Dropped() != 2 {
@@ -76,9 +77,9 @@ func TestLogBufferEmptyFilterReturnsEverything(t *testing.T) {
 	}
 }
 
-func TestRenderLogsMarksStderr(t *testing.T) {
+func TestRenderLogsMarksStderrWhenNoLevelIsKnown(t *testing.T) {
 	lines := []docker.LogLine{
-		{Stream: docker.StreamStderr, Text: "panic: boom"},
+		{Stream: docker.StreamStderr, Text: "something happened"},
 	}
 	var styled bool
 	style := func(s tui.Style, text string) string {
@@ -88,10 +89,33 @@ func TestRenderLogsMarksStderr(t *testing.T) {
 		return text
 	}
 
-	RenderLogs(lines, 80, false, false, style)
+	RenderLogs(records(lines...), renderOpts(80, false, false, true, false), style)
 
 	if !styled {
-		t.Error("stderr lines should be styled differently from stdout")
+		t.Error("with no severity to go on, the stream is the only signal available")
+	}
+}
+
+// Plenty of programs write their whole log to stderr — MySQL, PostgreSQL and
+// nginx among them — so treating the stream as a severity paints a healthy
+// container's entire output in error red and the colour stops meaning
+// anything. A parsed level is always the better signal.
+func TestParsedLevelOutranksStreamColour(t *testing.T) {
+	lines := []docker.LogLine{
+		{Stream: docker.StreamStderr, Text: "2026-07-27 14:13:48.437 UTC [1] LOG:  ready"},
+	}
+	var stderrStyled bool
+	style := func(s tui.Style, text string) string {
+		if s == styleStderr {
+			stderrStyled = true
+		}
+		return text
+	}
+
+	RenderLogs(records(lines...), renderOpts(120, false, false, true, true), style)
+
+	if stderrStyled {
+		t.Error("an informational line on stderr should not be painted as an error")
 	}
 }
 
@@ -102,8 +126,8 @@ func TestRenderLogsShowsTimestampsWhenEnabled(t *testing.T) {
 		Time:   time.Date(2026, 7, 27, 10, 11, 12, 0, time.UTC),
 	}
 
-	withStamps := RenderLogs([]docker.LogLine{stamped}, 80, false, true, plainStyle)
-	without := RenderLogs([]docker.LogLine{stamped}, 80, false, false, plainStyle)
+	withStamps := RenderLogs(records(stamped), renderOpts(80, false, true, true, false), plainStyle)
+	without := RenderLogs(records(stamped), renderOpts(80, false, false, true, false), plainStyle)
 
 	if !strings.Contains(withStamps[0], "10:11:12") {
 		t.Errorf("got %q, want the timestamp shown", withStamps[0])
@@ -118,7 +142,7 @@ func TestRenderLogsShowsTimestampsWhenEnabled(t *testing.T) {
 func TestRenderLogsWrapsLongLinesIntoMultipleRows(t *testing.T) {
 	long := strings.Repeat("x", 250)
 
-	rows := RenderLogs([]docker.LogLine{line(long)}, 100, true, false, plainStyle)
+	rows := RenderLogs(records(line(long)), renderOpts(100, true, false, true, false), plainStyle)
 
 	if len(rows) != 3 {
 		t.Fatalf("got %d rows for 250 chars at width 100, want 3", len(rows))
@@ -133,7 +157,7 @@ func TestRenderLogsWrapsLongLinesIntoMultipleRows(t *testing.T) {
 func TestRenderLogsWithoutWrapKeepsOneRowPerLine(t *testing.T) {
 	long := strings.Repeat("x", 250)
 
-	rows := RenderLogs([]docker.LogLine{line(long)}, 100, false, false, plainStyle)
+	rows := RenderLogs(records(line(long)), renderOpts(100, false, false, true, false), plainStyle)
 
 	if len(rows) != 1 {
 		t.Errorf("got %d rows, want the line left intact for horizontal reading", len(rows))
@@ -143,7 +167,7 @@ func TestRenderLogsWithoutWrapKeepsOneRowPerLine(t *testing.T) {
 // Control characters in log output would otherwise move the cursor and
 // scribble over the frame.
 func TestRenderLogsSanitizesControlCharacters(t *testing.T) {
-	rows := RenderLogs([]docker.LogLine{line("progress\rdone\x07")}, 80, false, false, plainStyle)
+	rows := RenderLogs(records(line("progress\rdone\x07")), renderOpts(80, false, false, true, false), plainStyle)
 
 	if strings.ContainsAny(rows[0], "\r\x07") {
 		t.Errorf("got %q, want control characters stripped", rows[0])
@@ -151,7 +175,7 @@ func TestRenderLogsSanitizesControlCharacters(t *testing.T) {
 }
 
 func TestRenderLogsHandlesEmptyInput(t *testing.T) {
-	if rows := RenderLogs(nil, 80, true, true, plainStyle); len(rows) != 0 {
+	if rows := RenderLogs(nil, renderOpts(80, true, true, true, false), plainStyle); len(rows) != 0 {
 		t.Errorf("got %v, want no rows", rows)
 	}
 }
@@ -160,7 +184,7 @@ func TestRenderLogsHandlesEmptyInput(t *testing.T) {
 func TestRenderLogsSurvivesDegenerateWidth(t *testing.T) {
 	done := make(chan []string, 1)
 	go func() {
-		done <- RenderLogs([]docker.LogLine{line("hello world")}, 0, true, false, plainStyle)
+		done <- RenderLogs(records(line("hello world")), renderOpts(0, true, false, true, false), plainStyle)
 	}()
 
 	select {
@@ -173,10 +197,135 @@ func TestRenderLogsSurvivesDegenerateWidth(t *testing.T) {
 	}
 }
 
-func texts(lines []docker.LogLine) []string {
-	out := make([]string, len(lines))
-	for i, l := range lines {
-		out[i] = l.Text
+func texts(records []Record) []string {
+	out := make([]string, len(records))
+	for i, r := range records {
+		out[i] = r.Line.Text
 	}
 	return out
+}
+
+// records wraps raw lines the way the buffer does, for render tests.
+func records(lines ...docker.LogLine) []Record {
+	out := make([]Record, len(lines))
+	for i, line := range lines {
+		out[i] = Record{Line: line, Entry: logfmt.Parse(line.Text)}
+	}
+	return out
+}
+
+// renderOpts builds options for a render test.
+func renderOpts(width int, wrap, timestamps, format, levelled bool) LogOptions {
+	return LogOptions{Width: width, Wrap: wrap, Timestamps: timestamps, Format: format, Levelled: levelled}
+}
+
+// The formatter's main contribution is that a log becomes scannable, which
+// requires the columns to hold their place even when a line has nothing to put
+// in them.
+func TestRenderLogsKeepsColumnsAlignedWhenValuesAreMissing(t *testing.T) {
+	buffer := NewLogBuffer(10)
+	buffer.Append(
+		docker.LogLine{Stream: docker.StreamStdout, Text: `{"time":"2026-07-27T10:00:00Z","level":"INFO","msg":"with everything"}`},
+		docker.LogLine{Stream: docker.StreamStdout, Text: `no timestamp and no level`},
+	)
+
+	rows := RenderLogs(buffer.Lines(""),
+		renderOpts(120, false, true, true, buffer.Levelled()), plainStyle)
+
+	first := strings.Index(rows[0], "with everything")
+	second := strings.Index(rows[1], "no timestamp")
+	if first != second {
+		t.Errorf("messages start at columns %d and %d; they should line up:\n%q\n%q",
+			first, second, rows[0], rows[1])
+	}
+}
+
+// Structured lines are the reason this exists: the message is buried behind
+// the syntax a program wrote for another program.
+func TestRenderLogsUnpacksStructuredLines(t *testing.T) {
+	buffer := NewLogBuffer(10)
+	buffer.Append(docker.LogLine{
+		Stream: docker.StreamStdout,
+		Text:   `{"time":"2026-07-27T10:00:00Z","level":"ERROR","msg":"send failed","attempt":3}`,
+	})
+
+	row := RenderLogs(buffer.Lines(""),
+		renderOpts(120, false, false, true, true), plainStyle)[0]
+
+	if strings.Contains(row, `"msg"`) {
+		t.Errorf("got %q, want the JSON syntax gone", row)
+	}
+	if !strings.Contains(row, "send failed") || !strings.Contains(row, "attempt=3") {
+		t.Errorf("got %q, want the message and its fields", row)
+	}
+	if !strings.Contains(row, "ERROR") {
+		t.Errorf("got %q, want the severity in its column", row)
+	}
+}
+
+// Turning formatting off must show exactly what the container wrote, which is
+// what you want when the question is about the log format itself.
+func TestRenderLogsRawShowsTheOriginalText(t *testing.T) {
+	original := `{"level":"INFO","msg":"hello"}`
+	buffer := NewLogBuffer(10)
+	buffer.Append(docker.LogLine{Stream: docker.StreamStdout, Text: original})
+
+	row := RenderLogs(buffer.Lines(""),
+		renderOpts(120, false, false, false, true), plainStyle)[0]
+
+	if !strings.Contains(row, original) {
+		t.Errorf("got %q, want the untouched line", row)
+	}
+}
+
+// The level column only appears where a stream actually has levels; reserving
+// it for output that never carries one would waste width on every line.
+func TestLevelColumnOnlyAppearsForLevelledStreams(t *testing.T) {
+	plain := NewLogBuffer(10)
+	plain.Append(docker.LogLine{Stream: docker.StreamStdout, Text: "just some output"})
+
+	if plain.Levelled() {
+		t.Fatal("a stream with no severities is not levelled")
+	}
+	row := RenderLogs(plain.Lines(""),
+		renderOpts(120, false, false, true, plain.Levelled()), plainStyle)[0]
+	if strings.HasPrefix(row, " ") {
+		t.Errorf("got %q, want no reserved level column", row)
+	}
+}
+
+// Sticky, so the layout does not shift as lines scroll past.
+func TestLevelledStaysSetOnceSeen(t *testing.T) {
+	buffer := NewLogBuffer(10)
+	buffer.Append(docker.LogLine{Text: `{"level":"INFO","msg":"m"}`})
+	buffer.Append(docker.LogLine{Text: "plain line"})
+
+	if !buffer.Levelled() {
+		t.Error("a stream that has shown a severity keeps its column")
+	}
+}
+
+func TestResetClearsLevelled(t *testing.T) {
+	buffer := NewLogBuffer(10)
+	buffer.Append(docker.LogLine{Text: `{"level":"INFO","msg":"m"}`})
+
+	buffer.Reset()
+
+	if buffer.Levelled() {
+		t.Error("reopening a stream starts over")
+	}
+}
+
+// Searching reasons about what the container wrote, which is a superset of
+// what the formatter displays.
+func TestFilterMatchesTheOriginalText(t *testing.T) {
+	buffer := NewLogBuffer(10)
+	buffer.Append(docker.LogLine{Text: `{"level":"INFO","msg":"hello","user":"ana"}`})
+
+	if got := len(buffer.Lines("user")); got != 1 {
+		t.Errorf("got %d matches for a field name, want 1", got)
+	}
+	if got := len(buffer.Lines("ana")); got != 1 {
+		t.Errorf("got %d matches for a field value, want 1", got)
+	}
 }
