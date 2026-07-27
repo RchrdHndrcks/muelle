@@ -193,6 +193,24 @@ TimescaleDB, PostGIS), Redis / Valkey, MongoDB, RabbitMQ, nginx, Node, Python.
 Everything else gets `bash` and `sh`, which are also always offered as a
 fallback.
 
+## Processes inside a container
+
+`T` shows what is actually running inside a container — `docker top` without
+leaving the UI:
+
+```
+UID   PID      PPID     C  STIME  TTY  TIME      CMD
+999   1722060  1722040  0  Jul15  ?    02:52:32  mysqld
+root  1722100  1722060  0  Jul15  ?    00:00:01  /bin/sh -c entrypoint
+```
+
+A container can be up, healthy, and serving nothing because the process that
+mattered died while the entrypoint stayed alive. The container list cannot
+show that; this can.
+
+Columns come from whatever the daemon reports, since they depend on the host's
+`ps`, and are sized to their contents so the command gets the room.
+
 ## Compose
 
 The Compose view is built from the labels Compose stamps on its containers, so

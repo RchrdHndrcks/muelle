@@ -36,6 +36,10 @@ func (a *App) handleKey(ctx context.Context, key tui.Key) {
 		if a.handleInspectKey(key) {
 			return
 		}
+	case ModeProcesses:
+		if a.handleProcessesKey(key) {
+			return
+		}
 	case ModeHelp:
 		if key.Type == tui.KeyEscape || key.IsRune('q') || key.IsRune('?') {
 			a.mode = ModeList
@@ -248,6 +252,9 @@ func (a *App) handleContainerKey(ctx context.Context, key tui.Key) bool {
 
 	case key.IsRune('x'):
 		a.openExecMenu(ctx, container)
+
+	case key.IsRune('T'):
+		a.openProcesses(ctx, container)
 
 	case key.IsRune('e'):
 		// Straight to a shell, skipping the menu.
