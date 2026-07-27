@@ -1,10 +1,13 @@
 package ui
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
+	"github.com/RchrdHndrcks/muelle/internal/config"
 	"github.com/RchrdHndrcks/muelle/internal/docker"
+	"github.com/RchrdHndrcks/muelle/internal/tui"
 )
 
 // sortable builds a container with the fields the orderings read.
@@ -274,5 +277,72 @@ func TestSortKeyOnlyCyclesOnTheContainerView(t *testing.T) {
 
 	if app.sortKey != SortDefault {
 		t.Errorf("got %v, want the images view to leave sorting alone", app.sortKey.Label())
+	}
+}
+
+// The names in the configuration file are the ones the interface uses, so what
+// is written there is what the application calls it.
+func TestParseSortKeyRoundTripsEveryOrdering(t *testing.T) {
+	for key := SortDefault; key < sortKeyCount; key++ {
+		parsed, ok := ParseSortKey(key.Label())
+		if !ok {
+			t.Errorf("%q is shown in the interface but not recognised back", key.Label())
+			continue
+		}
+		if parsed != key {
+			t.Errorf("%q parsed as %q", key.Label(), parsed.Label())
+		}
+	}
+}
+
+// A mistyped setting should not stop the application starting.
+func TestParseSortKeyRejectsUnknownNames(t *testing.T) {
+	for _, name := range []string{"", "cpus", "PROJECT", "nonsense"} {
+		if key, ok := ParseSortKey(name); ok {
+			t.Errorf("ParseSortKey(%q) accepted it as %v", name, key.Label())
+		}
+	}
+	if got := parseConfiguredSort("nonsense"); got != SortDefault {
+		t.Errorf("got %v, want a fallback to the default", got.Label())
+	}
+}
+
+func TestConfiguredSortIsAppliedAtStartup(t *testing.T) {
+	cfg := config.Default()
+	cfg.Sort = "memory"
+	cfg.ComposeDirs = nil
+	app := New(cfg, fakeDaemon(t), tui.NewScreen(&bytes.Buffer{}, 120, 30, false), nil)
+
+	if app.sortKey != SortMemory {
+		t.Errorf("got %v, want the stored ordering applied", app.sortKey.Label())
+	}
+}
+
+// The ordering someone chose should be what they find next time, not a setting
+// to reapply on every launch.
+func TestChangingTheOrderRecordsIt(t *testing.T) {
+	app := loadedApp(t)
+	var saved config.Config
+	app.SetPreferenceWriter(func(change func(*config.Config)) { change(&saved) })
+
+	press(app, runeKey('o')) // default -> cpu
+
+	if saved.Sort != "cpu" {
+		t.Errorf("got %q, want the new ordering recorded", saved.Sort)
+	}
+	if saved.Sort != app.sortKey.Label() {
+		t.Errorf("recorded %q while showing %q", saved.Sort, app.sortKey.Label())
+	}
+}
+
+// Nothing should be written where there is nowhere to write, as in dump mode.
+func TestChangingTheOrderWithoutAWriterIsHarmless(t *testing.T) {
+	app := loadedApp(t)
+	app.SetPreferenceWriter(nil)
+
+	press(app, runeKey('o'))
+
+	if app.sortKey == SortDefault {
+		t.Error("the ordering should still change in the session")
 	}
 }

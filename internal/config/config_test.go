@@ -161,3 +161,74 @@ func TestLoadOrCreateToleratesUnwritableLocation(t *testing.T) {
 		t.Error("expected usable defaults")
 	}
 }
+
+// A setting changed from inside the application must not discard an edit made
+// to the file meanwhile; the user's text is worth more than the preference.
+func TestUpdateLeavesOtherSettingsAlone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"log_tail": 42, "docker_host": "tcp://elsewhere:2375"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Update(path, func(c *Config) { c.Sort = "cpu" }); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Sort != "cpu" {
+		t.Errorf("got sort %q, want the change applied", got.Sort)
+	}
+	if got.LogTail != 42 || got.DockerHost != "tcp://elsewhere:2375" {
+		t.Errorf("got %+v, want the other settings preserved", got)
+	}
+}
+
+// Flattening a file that cannot be parsed would destroy whatever the user was
+// in the middle of writing.
+func TestUpdateRefusesToOverwriteAnUnreadableFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	original := `{"log_tail": }`
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Update(path, func(c *Config) { c.Sort = "cpu" }); err == nil {
+		t.Error("expected an error rather than a silent overwrite")
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != original {
+		t.Errorf("got %q, want the file left exactly as it was", after)
+	}
+}
+
+func TestUpdateCreatesTheFileWhenAbsent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	if err := Update(path, func(c *Config) { c.Sort = "memory" }); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Sort != "memory" {
+		t.Errorf("got %q, want the setting recorded", got.Sort)
+	}
+	if got.RefreshSeconds != Default().RefreshSeconds {
+		t.Errorf("got %+v, want defaults for everything else", got)
+	}
+}
+
+func TestDefaultSortIsTheProjectGrouping(t *testing.T) {
+	if got := Default().Sort; got != "project" {
+		t.Errorf("got %q, want the grouping that makes the list read as stacks", got)
+	}
+}
