@@ -250,7 +250,7 @@ func TestCommandIdentifiesProjectExplicitly(t *testing.T) {
 		ConfigFiles: []string{"/srv/shop/compose.yaml"},
 	}
 
-	argv := Command(project, ActionUp)
+	argv := pluginBinary.Command(project, ActionUp)
 
 	want := "docker compose -f /srv/shop/compose.yaml --project-directory /srv/shop -p shop up -d"
 	if got := strings.Join(argv, " "); got != want {
@@ -264,7 +264,7 @@ func TestCommandPassesEveryConfigFile(t *testing.T) {
 		ConfigFiles: []string{"/srv/shop/compose.yaml", "/srv/shop/compose.prod.yaml"},
 	}
 
-	argv := Command(project, ActionRestart)
+	argv := pluginBinary.Command(project, ActionRestart)
 
 	if got := strings.Count(strings.Join(argv, " "), "-f "); got != 2 {
 		t.Errorf("got %d -f flags in %v, want one per config file", got, argv)
@@ -273,7 +273,7 @@ func TestCommandPassesEveryConfigFile(t *testing.T) {
 
 // "up" must detach, or the TUI would sit attached to the log stream.
 func TestCommandUpIsDetached(t *testing.T) {
-	argv := Command(Project{Name: "shop"}, ActionUp)
+	argv := pluginBinary.Command(Project{Name: "shop"}, ActionUp)
 
 	if argv[len(argv)-1] != "-d" {
 		t.Errorf("got %v, want it to end with -d", argv)
@@ -281,7 +281,7 @@ func TestCommandUpIsDetached(t *testing.T) {
 }
 
 func TestCommandLogsFollowsWithBoundedTail(t *testing.T) {
-	argv := Command(Project{Name: "shop"}, ActionLogs)
+	argv := pluginBinary.Command(Project{Name: "shop"}, ActionLogs)
 
 	joined := strings.Join(argv, " ")
 	if !strings.Contains(joined, "logs -f --tail 200") {
@@ -290,7 +290,7 @@ func TestCommandLogsFollowsWithBoundedTail(t *testing.T) {
 }
 
 func TestCommandOmitsAbsentPaths(t *testing.T) {
-	argv := Command(Project{Name: "shop"}, ActionPS)
+	argv := pluginBinary.Command(Project{Name: "shop"}, ActionPS)
 
 	if got := strings.Join(argv, " "); got != "docker compose -p shop ps" {
 		t.Errorf("got %q, want no empty flags", got)

@@ -58,8 +58,10 @@ make build        # -> bin/muelle
 make cross        # -> linux/amd64 and linux/arm64 binaries for a server
 ```
 
-Requires Go 1.25+, a reachable Docker daemon, and — for exec and Compose
-actions only — the `docker` CLI on `PATH`.
+Requires Go 1.25+, a reachable Docker daemon, and — for exec actions only —
+the `docker` CLI on `PATH`. Compose actions additionally need Compose itself,
+in either of its forms: the `docker compose` plugin or a standalone
+`docker-compose` binary.
 
 ## Use
 
@@ -346,9 +348,29 @@ Press `Enter` on a project for the action menu (`up -d`, `down`, `restart`,
 `pull`, `build`, `ps`, `logs`), or `u` / `d` / `r` directly. `l` follows every
 service in the project at once, with each line labelled by service.
 
-Actions shell out to `docker compose` with the project identified explicitly
+Actions shell out to Compose with the project identified explicitly
 (`-f <file> --project-directory <dir> -p <name>`), so they behave the same
 regardless of where muelle was started.
+
+Compose ships in two shapes and muelle detects which one is installed at
+startup: the `docker compose` CLI plugin where it is present, and the
+standalone `docker-compose` binary otherwise. The docker CLI being on PATH
+proves nothing about the plugin sitting alongside it — a Homebrew
+`docker-compose` with no plugin installed is an ordinary setup — so the plugin
+is probed for rather than assumed. The action menu shows the argv it will
+actually run, naming whichever binary was found.
+
+### Restart does not reload configuration
+
+`r` on a container restarts it: the same container, started again. Its
+environment was fixed when it was created, so a changed `docker-compose.yml`
+has no effect and the `AGE` column does not move.
+
+To pick up configuration changes, use `u` (`up -d`) from the Compose view.
+Compose compares each service against the config hash on the running container
+and recreates only the ones that differ, which is where the new environment
+comes from — and why those containers, and only those, come back with a fresh
+age.
 
 ## Configuration
 

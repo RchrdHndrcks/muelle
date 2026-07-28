@@ -144,9 +144,14 @@ type App struct {
 	// refreshing guards against a slow daemon letting refreshes pile up
 	// behind the ticker.
 	refreshing bool
-	// dockerCLI records whether exec and Compose actions are available.
+	// dockerCLI records whether exec actions are available.
 	dockerCLI bool
-	version   docker.Version
+	// composeBinary is how Compose is invoked on this machine, or nil when
+	// it is not installed. Detected separately from dockerCLI: the docker
+	// binary being present says nothing about whether the compose plugin
+	// alongside it is.
+	composeBinary compose.Binary
+	version       docker.Version
 	// build identifies the running binary, so a stale install is visible
 	// rather than looking like a bug that was never fixed.
 	build string
@@ -185,6 +190,7 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		events:         make(chan event, 64),
 		quit:           make(chan struct{}),
 		dockerCLI:      DockerCLIAvailable(),
+		composeBinary:  compose.Detect(),
 	}
 }
 
@@ -228,8 +234,15 @@ func (a *App) Run(ctx context.Context, keys <-chan tui.Key, resize <-chan struct
 	if version, err := a.docker.Ping(ctx); err == nil {
 		a.version = version
 	}
-	if !a.dockerCLI {
+	// Said at startup rather than when an action is picked: a user who knows
+	// up front that exec or compose will not work can go and install the
+	// missing piece, instead of finding out from a failure at the moment
+	// they needed the thing to work.
+	switch {
+	case !a.dockerCLI:
 		a.setError("docker CLI not found on PATH: exec and compose actions are unavailable")
+	case !a.composeBinary.Available():
+		a.setError("%v", ErrComposeMissing)
 	}
 
 	a.refresh(ctx)

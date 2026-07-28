@@ -1,5 +1,55 @@
 package compose
 
+import (
+	"os/exec"
+)
+
+// Binary is the argv prefix that invokes Compose.
+//
+// Compose ships in two shapes and muelle cannot assume either. The modern one
+// is a CLI plugin invoked as "docker compose", installed under
+// ~/.docker/cli-plugins or inside Docker Desktop. The other is a standalone
+// "docker-compose" executable on PATH, which is what Homebrew installs and
+// what every pre-plugin installation has. A machine can have either, both, or
+// only the standalone one — and in that last case the docker binary exists and
+// answers, so checking for it proves nothing about Compose.
+type Binary []string
+
+// Available reports whether Compose can be run at all.
+func (b Binary) Available() bool { return len(b) > 0 }
+
+// Probes for each form, as variables so the selection rule can be tested
+// without depending on what happens to be installed on the machine running the
+// tests.
+var (
+	// pluginInstalled asks the docker CLI whether it knows the subcommand.
+	// Looking for the plugin file instead would have to guess at every
+	// directory Docker searches, which differs by platform and install
+	// method; asking the CLI is the only answer that cannot be wrong.
+	pluginInstalled = func() bool {
+		return exec.Command("docker", "compose", "version").Run() == nil
+	}
+	standaloneInstalled = func() bool {
+		_, err := exec.LookPath("docker-compose")
+		return err == nil
+	}
+)
+
+// Detect finds an installed Compose, preferring the plugin, and returns nil
+// when there is none.
+//
+// Called once at startup: the probe runs a subprocess, and the answer cannot
+// change while muelle is on screen without the user installing something.
+func Detect() Binary {
+	if pluginInstalled() {
+		return Binary{"docker", "compose"}
+	}
+	if standaloneInstalled() {
+		return Binary{"docker-compose"}
+	}
+	return nil
+}
+
 // Action is a Compose lifecycle operation.
 type Action string
 
@@ -53,8 +103,10 @@ func (a Action) Label() string {
 // the command behaves identically no matter where muelle was launched from.
 // The returned argv is executed directly, never through a shell, so paths
 // containing spaces need no quoting.
-func Command(project Project, action Action) []string {
-	argv := []string{"docker", "compose"}
+func (b Binary) Command(project Project, action Action) []string {
+	// Copied rather than appended to in place: the same Binary builds every
+	// command for the whole session.
+	argv := append([]string(nil), b...)
 
 	for _, file := range project.ConfigFiles {
 		argv = append(argv, "-f", file)

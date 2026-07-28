@@ -28,6 +28,15 @@ type Runner struct {
 // reported where it is needed rather than at startup.
 var ErrDockerCLIMissing = errors.New("the docker CLI is required for this action but was not found on PATH")
 
+// ErrComposeMissing is returned when neither form of Compose is installed.
+//
+// It names both, because the fix depends on which one the user expected to
+// have: someone who installed the standalone binary and someone who expected
+// the bundled plugin are two different situations, and "compose not found"
+// tells neither of them what to do.
+var ErrComposeMissing = errors.New(
+	"compose was not found: neither the docker compose plugin nor a docker-compose binary is installed")
+
 // DockerCLIAvailable reports whether the docker binary can be found.
 func DockerCLIAvailable() bool {
 	_, err := exec.LookPath("docker")
