@@ -90,7 +90,16 @@ func (a *App) containerColumns() []Column {
 	return append(columns,
 		Column{Title: "image", Width: 24},
 		Column{Title: "ports", Width: 20},
-		Column{Title: "age", Width: 7},
+		// Eight cells, not seven, because "just now" is eight and a
+		// seven-cell column renders it as "just n…" — in the uptime column
+		// that is the value a user is most likely to be looking at, having
+		// just restarted something.
+		Column{Title: "age", Width: 8},
+		// Uptime sits last because that is the position LayoutColumns
+		// drops first on a narrow terminal, and age is the older habit:
+		// someone reading at 80 columns is better served losing the newer
+		// column than having it displace one they already read by position.
+		Column{Title: "uptime", Width: 8},
 	)
 }
 
@@ -126,10 +135,12 @@ func (a *App) renderContainers(width, height int) []string {
 				statCell(style, stat.MemUsage, stat.MemPercent, hasStat),
 			)
 		}
+		uptime, running := container.Uptime()
 		cells = append(cells,
 			style(styleMuted, ShortenImage(container.Image, 24)),
 			container.PortSummary(),
 			style(styleMuted, FormatAge(container.Created)),
+			style(styleMuted, FormatUptime(uptime, running)),
 		)
 
 		row := RenderRow(cells, widths)

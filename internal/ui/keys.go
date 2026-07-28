@@ -621,7 +621,7 @@ func (a *App) openComposeMenu(project compose.Project) {
 	for _, action := range actions {
 		items = append(items, MenuItem{
 			Label:  action.Label(),
-			Detail: strings.Join(compose.Command(project, action), " "),
+			Detail: strings.Join(a.composeBinary.Command(project, action), " "),
 			Value:  action,
 		})
 	}
@@ -647,8 +647,8 @@ func (a *App) runCompose(project compose.Project, action compose.Action) {
 		a.setError("compose actions are unavailable in this mode")
 		return
 	}
-	if !a.dockerCLI {
-		a.setError("%v", ErrDockerCLIMissing)
+	if !a.composeBinary.Available() {
+		a.setError("%v", ErrComposeMissing)
 		return
 	}
 	if len(project.ConfigFiles) == 0 && project.WorkingDir == "" {
@@ -656,7 +656,7 @@ func (a *App) runCompose(project compose.Project, action compose.Action) {
 		return
 	}
 
-	argv := compose.Command(project, action)
+	argv := a.composeBinary.Command(project, action)
 	// Compose output is worth reading — pulled layers, build errors, why a
 	// service refused to start — so the child's output stays until
 	// dismissed.
