@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
+	"github.com/RchrdHndrcks/muelle/internal/config"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
 )
 
@@ -359,5 +361,45 @@ func TestExecReportsMissingDockerCLI(t *testing.T) {
 	}
 	if app.overlay != nil {
 		t.Error("no menu should open without the CLI")
+	}
+}
+
+// The viewer's toggles should be found the way they were left, the same as the
+// container ordering is.
+func TestLogViewTogglesAreRecorded(t *testing.T) {
+	app := loadedApp(t)
+	app.mode = ModeLogs
+	var saved config.Config
+	app.SetPreferenceWriter(func(change func(*config.Config)) error {
+		change(&saved)
+		return nil
+	})
+
+	press(app, runeKey('t'))
+	press(app, runeKey('w'))
+	press(app, runeKey('F'))
+
+	if saved.LogTimestamps != app.logStamps {
+		t.Errorf("recorded timestamps %v while showing %v", saved.LogTimestamps, app.logStamps)
+	}
+	if saved.LogWrap != app.logWrap {
+		t.Errorf("recorded wrap %v while showing %v", saved.LogWrap, app.logWrap)
+	}
+	if saved.LogFormat != app.logFormat {
+		t.Errorf("recorded format %v while showing %v", saved.LogFormat, app.logFormat)
+	}
+}
+
+func TestStoredLogViewSettingsApplyAtStartup(t *testing.T) {
+	cfg := config.Default()
+	cfg.ComposeDirs = nil
+	cfg.LogTimestamps = true
+	cfg.LogWrap = false
+	cfg.LogFormat = false
+	app := New(cfg, fakeDaemon(t), tui.NewScreen(&bytes.Buffer{}, 120, 30, false), nil)
+
+	if !app.logStamps || app.logWrap || app.logFormat {
+		t.Errorf("got stamps %v wrap %v format %v, want the stored settings applied",
+			app.logStamps, app.logWrap, app.logFormat)
 	}
 }

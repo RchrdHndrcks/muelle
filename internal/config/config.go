@@ -39,6 +39,14 @@ type Config struct {
 	// project, cpu, memory, age or state. An unrecognised value falls back
 	// to the default rather than refusing to start.
 	Sort string `json:"sort"`
+	// LogTimestamps, LogWrap and LogFormat are the log viewer's toggles,
+	// kept here so they survive the session that changed them. How someone
+	// reads logs is a preference like any other: pressing t on every
+	// container because the last time was forgotten is the same annoyance
+	// as re-sorting the list on every launch.
+	LogTimestamps bool `json:"log_timestamps"`
+	LogWrap       bool `json:"log_wrap"`
+	LogFormat     bool `json:"log_format"`
 }
 
 // Default returns the configuration used when no file exists.
@@ -52,6 +60,8 @@ func Default() Config {
 		Colour:         true,
 		SystemPanel:    true,
 		Sort:           "project",
+		LogWrap:        true,
+		LogFormat:      true,
 	}
 }
 

@@ -481,12 +481,15 @@ func (a *App) handleLogsKey(ctx context.Context, key tui.Key) bool {
 	case key.IsRune('w'):
 		a.logWrap = !a.logWrap
 		a.setStatus("wrap %s", onOff(a.logWrap))
+		a.remember(func(c *config.Config) { c.LogWrap = a.logWrap })
 	case key.IsRune('t'):
 		a.logStamps = !a.logStamps
 		a.setStatus("timestamps %s", onOff(a.logStamps))
+		a.remember(func(c *config.Config) { c.LogTimestamps = a.logStamps })
 	case key.IsRune('F'):
 		a.logFormat = !a.logFormat
 		a.setStatus("formatting %s", onOff(a.logFormat))
+		a.remember(func(c *config.Config) { c.LogFormat = a.logFormat })
 	case key.IsRune('/'):
 		a.overlay = NewInput("Filter logs", "match:", a.logFilter, func(value any) {
 			filter, _ := value.(string)

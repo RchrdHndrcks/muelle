@@ -232,3 +232,34 @@ func TestDefaultSortIsTheProjectGrouping(t *testing.T) {
 		t.Errorf("got %q, want the grouping that makes the list read as stacks", got)
 	}
 }
+
+// The log viewer's toggles are settings, not per-session state: someone who
+// works with timestamps on should not have to press t every time they open a
+// container.
+func TestLogViewDefaultsMatchTheViewersOwn(t *testing.T) {
+	defaults := Default()
+
+	if defaults.LogTimestamps {
+		t.Error("timestamps should start off, as the viewer has always had them")
+	}
+	if !defaults.LogWrap || !defaults.LogFormat {
+		t.Errorf("got wrap %v and format %v, want both on as the viewer starts", defaults.LogWrap, defaults.LogFormat)
+	}
+}
+
+// A file written before these settings existed must not silently turn wrapping
+// and formatting off, which is what a zero value would do.
+func TestOlderFileKeepsTheLogViewDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"sort":"memory"}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !got.LogWrap || !got.LogFormat {
+		t.Errorf("got wrap %v and format %v, want the defaults kept", got.LogWrap, got.LogFormat)
+	}
+}
