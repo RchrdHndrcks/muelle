@@ -39,14 +39,18 @@ type Config struct {
 	// project, cpu, memory, age or state. An unrecognised value falls back
 	// to the default rather than refusing to start.
 	Sort string `json:"sort"`
-	// LogTimestamps, LogWrap and LogFormat are the log viewer's toggles,
-	// kept here so they survive the session that changed them. How someone
-	// reads logs is a preference like any other: pressing t on every
-	// container because the last time was forgotten is the same annoyance
-	// as re-sorting the list on every launch.
+	// LogTimestamps prefixes each line in the log viewer with the time it
+	// was logged, as t toggles. Stored, like the two below it, because how
+	// someone reads logs is a preference like any other: pressing t on
+	// every container because the last time was forgotten is the same
+	// annoyance as re-sorting the list on every launch.
 	LogTimestamps bool `json:"log_timestamps"`
-	LogWrap       bool `json:"log_wrap"`
-	LogFormat     bool `json:"log_format"`
+	// LogWrap breaks long lines across rows rather than clipping them, as w
+	// toggles.
+	LogWrap bool `json:"log_wrap"`
+	// LogFormat renders structured lines as their parts rather than as the
+	// container wrote them, as F toggles.
+	LogFormat bool `json:"log_format"`
 }
 
 // Default returns the configuration used when no file exists.
