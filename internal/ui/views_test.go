@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RchrdHndrcks/muelle/internal/docker"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
@@ -137,5 +138,81 @@ func TestHeaderOmitsBuildWhenUnknown(t *testing.T) {
 
 	if strings.Contains(header, "  muelle ") {
 		t.Errorf("got %q, want no build suffix when none was set", header)
+	}
+}
+
+// Age and uptime answer different questions and must not be conflated: a
+// container restarted a minute ago was still created three days ago. Reporting
+// only the creation time is what makes a restart look like it did nothing.
+func TestContainerRowShowsUptimeAlongsideAge(t *testing.T) {
+	app := newTestApp(t)
+	app.containers = []docker.Container{{
+		ID:      "x",
+		Names:   []string{"/api"},
+		State:   "running",
+		Status:  "Up 2 minutes",
+		Created: time.Now().Add(-72 * time.Hour).Unix(),
+	}}
+
+	row := strings.Join(app.renderContainers(120, 10), "\n")
+
+	if !strings.Contains(row, "3d") {
+		t.Errorf("got %q, want the creation age 3d", row)
+	}
+	if !strings.Contains(row, "2m") {
+		t.Errorf("got %q, want the uptime 2m", row)
+	}
+	if !strings.Contains(row, "UPTIME") {
+		t.Errorf("got %q, want an uptime column header", row)
+	}
+}
+
+// A container that is not running has no uptime. Showing the time since it
+// died there would read as though it were still up.
+func TestUptimeCellEmptyForStoppedContainers(t *testing.T) {
+	app := newTestApp(t)
+	app.containers = []docker.Container{{
+		ID:      "x",
+		Names:   []string{"/api"},
+		State:   "exited",
+		Status:  "Exited (0) 5 minutes ago",
+		Created: time.Now().Add(-72 * time.Hour).Unix(),
+	}}
+	app.SetShowAll(true)
+
+	row := strings.Join(app.renderContainers(120, 10), "\n")
+
+	if strings.Contains(row, "5m") {
+		t.Errorf("got %q, want no uptime for a stopped container", row)
+	}
+	if !strings.Contains(row, "3d") {
+		t.Errorf("got %q, want the creation age still shown", row)
+	}
+}
+
+// "just now" is eight cells and was being truncated to "just n…" by a
+// seven-cell column. It is the single most common value in the uptime column,
+// since a container that was restarted is exactly what someone is looking at.
+func TestAgeAndUptimeColumnsFitTheirWidestValue(t *testing.T) {
+	app := newTestApp(t)
+
+	widest := 0
+	for _, d := range []time.Duration{
+		0, 30 * time.Second, 59 * time.Minute,
+		23 * time.Hour, 364 * 24 * time.Hour, 900 * 24 * time.Hour,
+	} {
+		if width := len(FormatDuration(d)); width > widest {
+			widest = width
+		}
+	}
+
+	for _, column := range app.containerColumns() {
+		if column.Title != "age" && column.Title != "uptime" {
+			continue
+		}
+		if column.Width < widest {
+			t.Errorf("column %q is %d cells, want at least %d for %q",
+				column.Title, column.Width, widest, FormatDuration(0))
+		}
 	}
 }

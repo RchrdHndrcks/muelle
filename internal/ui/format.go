@@ -35,6 +35,19 @@ func FormatAge(unix int64) string {
 	return FormatDuration(time.Since(time.Unix(unix, 0)))
 }
 
+// FormatUptime renders how long a container has been running, or "-" when it
+// is not running and so has no uptime.
+//
+// The blank is deliberate rather than showing how long ago it stopped: the
+// column reads as "has been up for", and a number there would say the opposite
+// of what the state column says.
+func FormatUptime(uptime time.Duration, running bool) string {
+	if !running {
+		return "-"
+	}
+	return FormatDuration(uptime)
+}
+
 // FormatDuration renders a duration to a single significant unit.
 func FormatDuration(d time.Duration) string {
 	switch {

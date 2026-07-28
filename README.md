@@ -13,11 +13,11 @@ is two ioctls. Nothing else was needed.
 
 ```
  muelle [1 Containers]  2 Compose  3 Images  4 Volumes            9/12 up  docker 27.4.0
- NAME              STATE    CPU     MEM       IMAGE              PORTS                AGE
- shop-api          up       0.7%    383MiB    shop/api:1.4       8080->8080/tcp       3d
- shop-db           up       0.8%    747MiB    mysql:8.0          3306->3306/tcp       3d
- shop-cache        up       0.1%    12MiB     redis:7-alpine     6379->6379/tcp       3d
- blog-web          exited   -       -         blog/web:2.1                            9d
+ NAME              STATE    CPU     MEM       IMAGE              PORTS                AGE    UPTIME
+ shop-api          up       0.7%    383MiB    shop/api:1.4       8080->8080/tcp       3d     2m
+ shop-db           up       0.8%    747MiB    mysql:8.0          3306->3306/tcp       3d     3d
+ shop-cache        up       0.1%    12MiB     redis:7-alpine     6379->6379/tcp       3d     3d
+ blog-web          exited   -       -         blog/web:2.1                            9d     -
  enter inspect  l logs  x exec  s start  t stop  r restart  D remove  a all  / filter  ? help
 ```
 
@@ -194,6 +194,30 @@ Health comes from the container list, which appends it to the status text —
 free to read. Restart counts need one inspect call each, so they are fetched
 only for containers that already look unwell (restarting, unhealthy or dead).
 On a healthy host that list is empty and costs nothing.
+
+## Age and uptime
+
+Two columns, because they answer different questions:
+
+```
+shop-api     3d     2m      created three days ago, restarted two minutes ago
+shop-db      3d     3d      created and started three days ago, untouched since
+blog-web     9d     -       not running, so there is no uptime
+```
+
+`AGE` is the container's creation time, the same figure `docker ps` reports as
+`CREATED`. It does not move when a container is restarted, because restarting
+reuses the container rather than making a new one — which is exactly why a
+restart that appeared to do nothing needs a second column to show that it did.
+
+`UPTIME` is the current run. It comes from the status text the daemon already
+returns with the container list (`Up 8 weeks`), not from an inspect call per
+container, so the column costs no extra requests. The price is the daemon's own
+granularity: eight weeks is reported as eight weeks, not to the hour. That is
+precise where it matters, since anything recently restarted is measured in
+seconds and minutes.
+
+On a narrow terminal `UPTIME` is the first column dropped.
 
 ## Exit codes
 
