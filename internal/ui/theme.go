@@ -13,6 +13,7 @@ const (
 	colourGreen  = 78
 	colourRed    = 203
 	colourYellow = 179
+	colourOrange = 215
 	colourBlue   = 75
 	colourPurple = 141
 	colourGrey   = 245
@@ -119,6 +120,23 @@ func levelStyle(level logfmt.Level) tui.Style {
 	default:
 		return tui.Foreground(colourGrey)
 	}
+}
+
+// methodStyles colours the HTTP verbs an access log is built around.
+//
+// The scale runs from cold to warm with how much damage the request can do:
+// the reads are green and blue, the writes warm up through orange and yellow
+// to violet, and DELETE is the red that everything else in this UI reserves
+// for something being destroyed. Scanning a log for the request that broke
+// something is mostly scanning for the verbs that change state.
+var methodStyles = map[string]tui.Style{
+	"GET":     tui.Foreground(colourGreen),
+	"HEAD":    tui.Foreground(colourBlue),
+	"OPTIONS": tui.Foreground(colourGrey),
+	"POST":    tui.Foreground(colourOrange),
+	"PUT":     tui.Foreground(colourYellow),
+	"PATCH":   tui.Foreground(colourPurple),
+	"DELETE":  tui.Foreground(colourRed),
 }
 
 // usageStyle colours a utilisation percentage, drawing attention only once a

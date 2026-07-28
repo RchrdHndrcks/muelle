@@ -144,6 +144,16 @@ For the same reason a parsed severity outranks the stream. Plenty of programs
 write their entire log to stderr, so treating the stream as a severity paints a
 healthy container's whole output red.
 
+HTTP verbs in a message are coloured apart, on a scale that runs from cold to
+warm with how much the request can change: `GET` green, `HEAD` blue, `OPTIONS`
+grey, `POST` orange, `PUT` yellow, `PATCH` violet, `DELETE` red. Whole
+upper-case words only, so `TARGET` is not a `GET`. A line already painted red
+for coming from stderr keeps that colour instead: the stream says more than the
+verb, and a colour opened inside another one would end it early.
+
+`t`, `w` and `F` are remembered between sessions, the same as the ordering
+you choose with `o`.
+
 ## Host metrics
 
 A summary of the machine the daemon runs on sits beneath the list, toggled
@@ -400,6 +410,9 @@ Written on first run to `$MUELLE_CONFIG` if set, otherwise
 | `stop_timeout` | seconds a container gets to exit before being killed |
 | `colour` | styled output; `NO_COLOR` in the environment always wins |
 | `sort` | container ordering: `project`, `cpu`, `memory`, `age` or `state`. Updated when you press `o`, so the ordering you chose is the one you come back to |
+| `log_timestamps` | timestamps in the log viewer. Updated when you press `t` |
+| `log_wrap` | wrapping in the log viewer. Updated when you press `w` |
+| `log_format` | structured lines rendered as their parts. Updated when you press `F` |
 
 The daemon is found by trying, in order: `DOCKER_HOST`; the well-known socket
 paths (`/var/run/docker.sock`, Docker Desktop, Colima, rootless); and finally

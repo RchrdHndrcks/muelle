@@ -68,7 +68,7 @@ func VisibleWidth(s string) int {
 	width := 0
 	for i := 0; i < len(s); {
 		if s[i] == 0x1b {
-			i += escapeLen(s[i:])
+			i += EscapeLen(s[i:])
 			continue
 		}
 		r, size := utf8.DecodeRuneInString(s[i:])
@@ -110,9 +110,12 @@ func RuneWidth(r rune) int {
 	}
 }
 
-// escapeLen returns the byte length of the escape sequence starting at the
+// EscapeLen returns the byte length of the escape sequence starting at the
 // beginning of s, or 1 if it is not a recognisable sequence.
-func escapeLen(s string) int {
+//
+// Exported so callers that walk styled text byte by byte can step over a
+// sequence instead of reading its parameters as content.
+func EscapeLen(s string) int {
 	if len(s) < 2 || s[0] != 0x1b {
 		return 1
 	}
@@ -159,7 +162,7 @@ func Truncate(s string, width int) string {
 	)
 	for i := 0; i < len(s); {
 		if s[i] == 0x1b {
-			n := escapeLen(s[i:])
+			n := EscapeLen(s[i:])
 			b.WriteString(s[i : i+n])
 			escaped = true
 			i += n
@@ -206,7 +209,7 @@ func TrimCells(s string, width int) string {
 	)
 	for i < len(s) && cells < width {
 		if s[i] == 0x1b {
-			n := escapeLen(s[i:])
+			n := EscapeLen(s[i:])
 			b.WriteString(s[i : i+n])
 			i += n
 			continue
@@ -245,7 +248,7 @@ func Sanitize(s string) string {
 		c := s[i]
 		switch {
 		case c == 0x1b:
-			n := escapeLen(s[i:])
+			n := EscapeLen(s[i:])
 			// Keep colour sequences, drop cursor movement and the rest.
 			if n >= 3 && s[i+1] == '[' && s[i+n-1] == 'm' {
 				b.WriteString(s[i : i+n])

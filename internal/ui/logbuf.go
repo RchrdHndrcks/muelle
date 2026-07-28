@@ -192,11 +192,10 @@ func renderPrefix(record Record, opts LogOptions, style func(tui.Style, string) 
 // renderBody builds the message and any fields.
 func renderBody(record Record, opts LogOptions, style func(tui.Style, string) string) string {
 	if !opts.Format {
-		return colourByStream(record, tui.Sanitize(record.Line.Text), style)
+		return renderMessage(record, tui.Sanitize(record.Line.Text), style)
 	}
 
-	message := tui.Sanitize(record.Entry.Message)
-	body := colourByStream(record, message, style)
+	body := renderMessage(record, tui.Sanitize(record.Entry.Message), style)
 
 	for _, field := range record.Entry.Fields {
 		// Dimmed, and after the message: the message is what is being
@@ -209,21 +208,82 @@ func renderBody(record Record, opts LogOptions, style func(tui.Style, string) st
 	return body
 }
 
-// colourByStream applies the fallback colouring for lines whose severity is
-// unknown.
+// renderMessage colours a message, either as a whole or a word at a time.
 //
-// Only as a fallback: plenty of programs write their entire log to stderr —
+// Never both. A colour opened inside another one closes with a reset that ends
+// the outer colour too, so highlighting a verb inside a red stderr line would
+// leave everything after the verb uncoloured. The line-wide signal wins: that
+// the output went to stderr says more than which verb it mentions.
+func renderMessage(record Record, text string, style func(tui.Style, string) string) string {
+	if colouredByStream(record) {
+		return style(styleStderr, text)
+	}
+	return highlightMethods(text, style)
+}
+
+// colouredByStream reports whether a line gets the fallback colouring for
+// output whose severity is unknown.
+//
+// Only a fallback: plenty of programs write their entire log to stderr —
 // MySQL, PostgreSQL and nginx among them — so treating the stream as a
 // severity paints a healthy container's whole output in error red, and the
 // colour stops meaning anything. A parsed level is always the better signal.
-func colourByStream(record Record, text string, style func(tui.Style, string) string) string {
-	if record.Entry.Level != logfmt.LevelUnknown {
+func colouredByStream(record Record) bool {
+	return record.Entry.Level == logfmt.LevelUnknown && record.Line.Stderr()
+}
+
+// highlightMethods colours each HTTP verb that appears as a word of its own.
+//
+// Words are taken whole, so "TARGET" is not a GET and "GETTING" is not a
+// request. Colour that fires on a coincidence is worse than no colour at all,
+// because it teaches the reader to stop trusting it.
+func highlightMethods(text string, style func(tui.Style, string) string) string {
+	if !strings.ContainsFunc(text, func(r rune) bool { return r >= 'A' && r <= 'Z' }) {
 		return text
 	}
-	if record.Line.Stderr() {
-		return style(styleStderr, text)
+
+	var b strings.Builder
+	b.Grow(len(text))
+	for i := 0; i < len(text); {
+		if text[i] == 0x1b {
+			// A sequence the container wrote itself: stepped over whole,
+			// so its parameters are never mistaken for a word.
+			n := tui.EscapeLen(text[i:])
+			b.WriteString(text[i : i+n])
+			i += n
+			continue
+		}
+		if !wordByte(text[i]) {
+			b.WriteByte(text[i])
+			i++
+			continue
+		}
+		start := i
+		for i < len(text) && wordByte(text[i]) {
+			i++
+		}
+		word := text[start:i]
+		if verb, ok := methodStyles[word]; ok {
+			b.WriteString(style(verb, word))
+			continue
+		}
+		b.WriteString(word)
 	}
-	return text
+	return b.String()
+}
+
+// wordByte reports whether a byte can appear inside a word. Taking the run
+// whole is what makes the boundary check unnecessary: a verb only matches when
+// nothing wordlike sits against it on either side.
+func wordByte(c byte) bool {
+	switch {
+	case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+		return true
+	case c == '_', c >= 0x80:
+		return true
+	default:
+		return false
+	}
 }
 
 // wrapLine splits a styled string into segments of at most width visible
