@@ -329,3 +329,94 @@ func TestFilterMatchesTheOriginalText(t *testing.T) {
 		t.Errorf("got %d matches for a field value, want 1", got)
 	}
 }
+
+// painter records what was styled, so a test can ask how a run was coloured
+// rather than matching escape sequences by hand.
+type painter struct {
+	runs []struct {
+		style tui.Style
+		text  string
+	}
+}
+
+func (p *painter) style(style tui.Style, text string) string {
+	p.runs = append(p.runs, struct {
+		style tui.Style
+		text  string
+	}{style, text})
+	return text
+}
+
+// styleOf reports the style a run of text was painted with, and whether it was
+// painted as its own run at all.
+func (p *painter) styleOf(text string) (tui.Style, bool) {
+	for _, run := range p.runs {
+		if run.text == text {
+			return run.style, true
+		}
+	}
+	return tui.StyleNone, false
+}
+
+func renderWith(t *testing.T, text string, opts LogOptions) *painter {
+	t.Helper()
+	buffer := NewLogBuffer(10)
+	buffer.Append(line(text))
+	paint := &painter{}
+	if opts.Width == 0 {
+		opts.Width = 200
+	}
+	RenderLogs(buffer.Lines(""), opts, paint.style)
+	return paint
+}
+
+// An access log is mostly noise until the verb stands out: the method is the
+// first thing the eye looks for when scanning for the request that failed.
+func TestHTTPVerbsAreColouredApart(t *testing.T) {
+	get := renderWith(t, `{"level":"INFO","msg":"| GET | /api/v1/chat/ws | 401"}`, LogOptions{Format: true, Levelled: true})
+	getStyle, ok := get.styleOf("GET")
+	if !ok {
+		t.Fatalf("GET was not painted as its own run, got %+v", get.runs)
+	}
+
+	post := renderWith(t, `{"level":"INFO","msg":"| POST | /api/v1/login | 200"}`, LogOptions{Format: true, Levelled: true})
+	postStyle, ok := post.styleOf("POST")
+	if !ok {
+		t.Fatalf("POST was not painted as its own run, got %+v", post.runs)
+	}
+
+	if getStyle == postStyle {
+		t.Errorf("GET and POST share style %q, want a verb to be recognisable by colour", getStyle)
+	}
+}
+
+// Colouring a word merely because it spells a verb makes the colour untrustworthy,
+// which is the only thing it has going for it.
+func TestOnlyWholeUppercaseVerbsAreColoured(t *testing.T) {
+	for _, text := range []string{
+		`{"level":"INFO","msg":"could not get user"}`,
+		`{"level":"INFO","msg":"TARGET reached"}`,
+		`{"level":"INFO","msg":"GETTING ready"}`,
+	} {
+		paint := renderWith(t, text, LogOptions{Format: true, Levelled: true})
+		for _, run := range paint.runs {
+			if _, isVerb := methodStyles[run.text]; isVerb {
+				t.Errorf("%s: painted %q as a verb", text, run.text)
+			}
+		}
+	}
+}
+
+// Nesting a colour inside the stderr red emits a reset that ends the red early,
+// leaving the rest of the line uncoloured.
+func TestVerbsAreLeftAloneInsideAStderrLine(t *testing.T) {
+	buffer := NewLogBuffer(10)
+	buffer.Append(docker.LogLine{Stream: docker.StreamStderr, Text: "| GET | /health"})
+	paint := &painter{}
+
+	RenderLogs(buffer.Lines(""), LogOptions{Width: 200, Format: true}, paint.style)
+
+	if _, ok := paint.styleOf("GET"); ok {
+		t.Errorf("GET was painted separately inside a stderr line, got %+v", paint.runs)
+	}
+}
