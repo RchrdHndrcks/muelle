@@ -88,7 +88,8 @@ Press `?` in the app for the full reference.
 | `l` | follow logs |
 | `x` | exec menu |
 | `e` | shell immediately (`bash`, falling back to `sh`) |
-| `s` `t` `r` | start / stop / restart |
+| `s` `t` | start / stop |
+| `r` | restart, or recreate to apply an edited compose file |
 | `p` | pause or unpause |
 | `K` | kill (SIGKILL) |
 | `D` | remove |
@@ -354,9 +355,10 @@ projects appear with no configuration. Stopped projects have no containers to
 read labels from, so directories listed in `compose_dirs` are also scanned one
 level deep for a compose file.
 
-Press `Enter` on a project for the action menu (`up -d`, `down`, `restart`,
-`pull`, `build`, `ps`, `logs`), or `u` / `d` / `r` directly. `l` follows every
-service in the project at once, with each line labelled by service.
+Press `Enter` on a project for the action menu (`up -d`, `recreate`, `down`,
+`restart`, `pull`, `build`, `ps`, `logs`), or `u` / `d` / `r` directly. `l`
+follows every service in the project at once, with each line labelled by
+service. `e` edits the project's configuration; see below.
 
 Actions shell out to Compose with the project identified explicitly
 (`-f <file> --project-directory <dir> -p <name>`), so they behave the same
@@ -370,17 +372,63 @@ proves nothing about the plugin sitting alongside it — a Homebrew
 is probed for rather than assumed. The action menu shows the argv it will
 actually run, naming whichever binary was found.
 
+### Editing a project
+
+`e` on a project lists the files that define it — every file Compose was
+invoked with, plus the project's `.env` — and opens the chosen one in your
+editor, with the terminal handed over the way `exec` hands it over.
+
+Files named with `env_file:` are not listed. Compose resolves them into the
+rendered configuration and records them in no label, so finding them would
+mean parsing YAML, which muelle does not do.
+
+On return, muelle compares the file's contents. If nothing changed, nothing
+happens. If something did, it runs `compose config -q` first: that renders the
+project in memory without touching a container, so a typo is reported in
+milliseconds instead of after half the stack has come down. A rejected file is
+shown with Compose's own diagnostic and an offer to go back to the editor.
+
+Once the configuration is valid, muelle offers to apply it with `up -d`, or
+with `up -d --force-recreate` for the case where Compose decides nothing
+changed and you know better.
+
+The editor is `editor` from the configuration file, then `$VISUAL`, then
+`$EDITOR`, then `vi`. The value may carry flags, which is what makes a
+graphical editor usable here: `code --wait` works, plain `code` returns before
+you have typed anything and muelle sees an unchanged file.
+
 ### Restart does not reload configuration
 
 `r` on a container restarts it: the same container, started again. Its
-environment was fixed when it was created, so a changed `docker-compose.yml`
-has no effect and the `AGE` column does not move.
+environment, image and ports were fixed when it was created, so a changed
+`docker-compose.yml` has no effect and the `AGE` column does not move. This is
+Docker's design, not a limitation of muelle — no restart of any kind applies a
+configuration change.
 
-To pick up configuration changes, use `u` (`up -d`) from the Compose view.
-Compose compares each service against the config hash on the running container
-and recreates only the ones that differ, which is where the new environment
-comes from — and why those containers, and only those, come back with a fresh
-age.
+Replacing the container is what applies one. Where muelle can do that — the
+container carries Compose's labels, Compose is installed, and the project's
+files are known — `r` offers both:
+
+```
+  shop-api
+
+  › restart     same container, kept as it was created
+    recreate    apply the current compose.yml and .env
+
+  esc cancel
+```
+
+Recreating one service runs `up -d --no-deps --force-recreate <service>`.
+`--no-deps` is the important flag: without it Compose replaces everything the
+service `depends_on` as well, turning "restart the API" into an outage of the
+database behind it.
+
+Where recreating is not possible, `r` restarts directly and shows no menu.
+
+To apply changes across a whole project instead, `u` (`up -d`) from the Compose
+view compares each service against the config hash on its running container and
+recreates only the ones that differ — which is why those containers, and only
+those, come back with a fresh age.
 
 ## Configuration
 
@@ -413,6 +461,7 @@ Written on first run to `$MUELLE_CONFIG` if set, otherwise
 | `log_timestamps` | timestamps in the log viewer. Updated when you press `t` |
 | `log_wrap` | wrapping in the log viewer. Updated when you press `w` |
 | `log_format` | structured lines rendered as their parts. Updated when you press `F` |
+| `editor` | editor for `e` on a Compose project. Empty leaves the choice to `$VISUAL` and `$EDITOR`, where you have already made it. May carry flags, as in `code --wait` |
 
 The daemon is found by trying, in order: `DOCKER_HOST`; the well-known socket
 paths (`/var/run/docker.sock`, Docker Desktop, Colima, rootless); and finally

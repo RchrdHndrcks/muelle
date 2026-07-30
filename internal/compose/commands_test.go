@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/RchrdHndrcks/muelle/internal/docker"
 )
 
 func TestCommandBuildsArgvForEachBinary(t *testing.T) {
@@ -105,6 +107,70 @@ func TestStringNamesTheDetectedBinary(t *testing.T) {
 	detail := strings.Join(Binary{"docker-compose"}.Command(Project{Name: "x"}, ActionPS), " ")
 	if !strings.HasPrefix(detail, "docker-compose ") {
 		t.Errorf("got %q, want it to start with the standalone binary", detail)
+	}
+}
+
+// Recreating is an "up" that refuses to reuse the existing container. A
+// restart cannot apply a configuration change — the container's environment
+// and image are fixed when it is created — so this is the only action that
+// makes an edited compose file take effect.
+func TestCommandBuildsRecreateAsAForcedUp(t *testing.T) {
+	got := pluginBinary.Command(Project{Name: "engi"}, ActionRecreate)
+
+	want := []string{"docker", "compose", "-p", "engi", "up", "-d", "--force-recreate"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// Recreating one service must leave the rest of the stack alone. Without
+// --no-deps Compose recreates everything the service depends_on, which turns
+// "restart the API" into an outage of the database behind it.
+func TestCommandRecreatesOneServiceWithoutItsDependencies(t *testing.T) {
+	got := pluginBinary.Command(Project{Name: "engi"}, ActionRecreate, "api")
+
+	want := []string{
+		"docker", "compose", "-p", "engi",
+		"up", "-d", "--force-recreate", "--no-deps", "api",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// --no-deps belongs to recreating a single service, not to naming a service.
+// An "up" that names a service is asking for that service to exist, which
+// means its dependencies have to exist too.
+func TestCommandKeepsDependenciesForAScopedUp(t *testing.T) {
+	got := pluginBinary.Command(Project{Name: "engi"}, ActionUp, "api")
+
+	want := []string{"docker", "compose", "-p", "engi", "up", "-d", "api"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// Validation renders the configuration and reports what is wrong with it
+// without touching a single container, which is what makes it worth running
+// before an edit is applied.
+func TestCommandValidatesQuietly(t *testing.T) {
+	got := pluginBinary.Command(Project{Name: "engi"}, ActionConfig)
+
+	want := []string{"docker", "compose", "-p", "engi", "config", "-q"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// Recreate is offered only where it can do something: a project with nothing
+// running has no container to replace, and "up" already covers it.
+func TestActionsOfferRecreateOnlyForARunningProject(t *testing.T) {
+	running := Project{Containers: []docker.Container{{State: "running"}}}
+	if !slices.Contains(Actions(running), ActionRecreate) {
+		t.Error("a running project must be offered recreate")
+	}
+	if slices.Contains(Actions(Project{}), ActionRecreate) {
+		t.Error("a project with nothing running must not be offered recreate")
 	}
 }
 

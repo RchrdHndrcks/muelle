@@ -295,9 +295,7 @@ func (a *App) handleContainerKey(ctx context.Context, key tui.Key) bool {
 		})
 
 	case key.IsRune('r'):
-		a.runAction(ctx, "restarted "+name, func(c context.Context) error {
-			return a.docker.Restart(c, container.ID, a.config.StopTimeout)
-		})
+		a.openRestartMenu(ctx, container)
 
 	case key.IsRune('p'):
 		if container.State == "paused" {
@@ -351,6 +349,8 @@ func (a *App) handleComposeKey(ctx context.Context, key tui.Key) bool {
 		})
 	case key.IsRune('r'):
 		a.runCompose(project, compose.ActionRestart)
+	case key.IsRune('e'):
+		a.openEditMenu(project)
 	case key.IsRune('l'):
 		a.openProjectLogs(ctx, project)
 	default:
@@ -645,7 +645,7 @@ func (a *App) openComposeMenu(project compose.Project) {
 
 // runCompose suspends the TUI and runs a Compose command, leaving its output
 // on screen until the user acknowledges it.
-func (a *App) runCompose(project compose.Project, action compose.Action) {
+func (a *App) runCompose(project compose.Project, action compose.Action, services ...string) {
 	if a.runner == nil {
 		a.setError("compose actions are unavailable in this mode")
 		return
@@ -659,7 +659,7 @@ func (a *App) runCompose(project compose.Project, action compose.Action) {
 		return
 	}
 
-	argv := a.composeBinary.Command(project, action)
+	argv := a.composeBinary.Command(project, action, services...)
 	// Compose output is worth reading — pulled layers, build errors, why a
 	// service refused to start — so the child's output stays until
 	// dismissed.

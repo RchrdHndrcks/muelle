@@ -263,3 +263,27 @@ func TestOlderFileKeepsTheLogViewDefaults(t *testing.T) {
 		t.Errorf("got wrap %v and format %v, want the defaults kept", got.LogWrap, got.LogFormat)
 	}
 }
+
+// An unset editor is not a missing setting: it means the environment decides,
+// which is what almost every user wants and what $VISUAL and $EDITOR exist
+// for. Defaulting it to a particular editor would override their shell.
+func TestDefaultLeavesTheEditorToTheEnvironment(t *testing.T) {
+	if editor := Default().Editor; editor != "" {
+		t.Errorf("got %q, want no editor so the environment decides", editor)
+	}
+}
+
+func TestLoadReadsTheConfiguredEditor(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"editor":"hx"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Editor != "hx" {
+		t.Errorf("got %q, want the editor from the file", loaded.Editor)
+	}
+}

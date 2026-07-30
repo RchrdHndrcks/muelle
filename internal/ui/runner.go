@@ -95,6 +95,24 @@ func (r *Runner) Run(argv []string, pauseAfter bool) error {
 	return runErr
 }
 
+// Capture runs argv and returns what it wrote, without handing over the
+// terminal.
+//
+// Run exists for commands the user watches; this exists for commands muelle
+// reads. Validating a compose file is the case that needs it: the point is to
+// show Compose's complaint inside the TUI, and suspending the interface to run
+// something that prints one line would be a flicker for nothing.
+//
+// Output is combined, because a command that fails says why on stderr and a
+// command that succeeds says so on stdout.
+func (r *Runner) Capture(argv []string) (string, error) {
+	if len(argv) == 0 {
+		return "", errors.New("no command to run")
+	}
+	out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+	return string(out), err
+}
+
 // notExecutable is the status docker returns when the thing asked for is not
 // runnable inside the container — most often because the image does not
 // contain it.

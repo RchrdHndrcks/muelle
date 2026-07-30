@@ -514,7 +514,7 @@ func (a *App) contextHints() string {
 	case ViewContainers:
 		return "enter inspect  l logs  x exec  s start  t stop  r restart  D remove  T top  a all  o sort  P prune  S system  / filter  ? help"
 	case ViewCompose:
-		return "enter actions  l logs  u up  d down  r restart  / filter  ? help"
+		return "enter actions  l logs  e edit  u up  d down  r restart  / filter  ? help"
 	case ViewImages:
 		return "D remove  P prune  u unused only  / filter  ? help"
 	case ViewVolumes:

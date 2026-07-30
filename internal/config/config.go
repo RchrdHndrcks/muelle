@@ -51,6 +51,10 @@ type Config struct {
 	// LogFormat renders structured lines as their parts rather than as the
 	// container wrote them, as F toggles.
 	LogFormat bool `json:"log_format"`
+	// Editor opens a project's compose file or .env. Empty — the default —
+	// leaves the choice to $VISUAL and $EDITOR, which is where a user has
+	// already made it.
+	Editor string `json:"editor"`
 }
 
 // Default returns the configuration used when no file exists.

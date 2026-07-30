@@ -54,17 +54,48 @@ func Detect() Binary {
 type Action string
 
 // Supported project actions.
+//
+// Most are Compose subcommands, but two are not: recreate and config stand
+// for a subcommand plus the flags that give it its meaning. See args.
 const (
-	ActionUp      Action = "up"
-	ActionDown    Action = "down"
-	ActionRestart Action = "restart"
-	ActionStop    Action = "stop"
-	ActionStart   Action = "start"
-	ActionPull    Action = "pull"
-	ActionBuild   Action = "build"
-	ActionPS      Action = "ps"
-	ActionLogs    Action = "logs"
+	ActionUp       Action = "up"
+	ActionDown     Action = "down"
+	ActionRestart  Action = "restart"
+	ActionRecreate Action = "recreate"
+	ActionStop     Action = "stop"
+	ActionStart    Action = "start"
+	ActionPull     Action = "pull"
+	ActionBuild    Action = "build"
+	ActionPS       Action = "ps"
+	ActionLogs     Action = "logs"
+	ActionConfig   Action = "config"
 )
+
+// args returns the subcommand and flags the action runs as.
+//
+// Recreate is the reason this is a method rather than the name of a
+// subcommand: a container's environment, image and ports are fixed when it is
+// created, so no restart of any kind can apply an edited compose file. Only
+// replacing the container does, and Compose spells that "up --force-recreate".
+func (a Action) args() []string {
+	switch a {
+	case ActionUp:
+		// Detached: the TUI resumes as soon as the stack is up rather
+		// than sitting attached to the aggregated log stream.
+		return []string{"up", "-d"}
+	case ActionRecreate:
+		return []string{"up", "-d", "--force-recreate"}
+	case ActionLogs:
+		return []string{"logs", "-f", "--tail", "200"}
+	case ActionConfig:
+		// Renders and validates the configuration without touching a
+		// container, which is what makes it safe to run before an edit
+		// is applied.
+		return []string{"config", "-q"}
+	default:
+		return []string{string(a)}
+	}
+}
 
 // Destructive reports whether an action removes containers, and so should be
 // confirmed before running.
@@ -78,7 +109,9 @@ func (a Action) Label() string {
 	case ActionDown:
 		return "down (stop and remove)"
 	case ActionRestart:
-		return "restart"
+		return "restart (does not apply config changes)"
+	case ActionRecreate:
+		return "recreate (apply current config)"
 	case ActionStop:
 		return "stop"
 	case ActionStart:
@@ -96,14 +129,15 @@ func (a Action) Label() string {
 	}
 }
 
-// Command builds the argv for running an action against a project.
+// Command builds the argv for running an action against a project, optionally
+// scoped to particular services.
 //
 // The project is identified explicitly — by config file, project directory and
 // project name — rather than by relying on the process working directory, so
 // the command behaves identically no matter where muelle was launched from.
 // The returned argv is executed directly, never through a shell, so paths
 // containing spaces need no quoting.
-func (b Binary) Command(project Project, action Action) []string {
+func (b Binary) Command(project Project, action Action, services ...string) []string {
 	// Copied rather than appended to in place: the same Binary builds every
 	// command for the whole session.
 	argv := append([]string(nil), b...)
@@ -121,17 +155,17 @@ func (b Binary) Command(project Project, action Action) []string {
 		argv = append(argv, "-p", project.Name)
 	}
 
-	argv = append(argv, string(action))
+	argv = append(argv, action.args()...)
 
-	switch action {
-	case ActionUp:
-		// Detached: the TUI resumes as soon as the stack is up rather
-		// than sitting attached to the aggregated log stream.
-		argv = append(argv, "-d")
-	case ActionLogs:
-		argv = append(argv, "-f", "--tail", "200")
+	// Recreating one service must leave the rest of the stack alone.
+	// Without this, Compose replaces everything the service depends_on as
+	// well, turning "restart the API" into an outage of the database behind
+	// it. Naming a service in any other action is a request for it to be
+	// running, which its dependencies are part of.
+	if len(services) > 0 && action == ActionRecreate {
+		argv = append(argv, "--no-deps")
 	}
-	return argv
+	return append(argv, services...)
 }
 
 // Actions lists the actions offered for a project, in menu order. A project
@@ -142,6 +176,7 @@ func Actions(project Project) []Action {
 	}
 	return []Action{
 		ActionRestart,
+		ActionRecreate,
 		ActionUp,
 		ActionStop,
 		ActionLogs,
