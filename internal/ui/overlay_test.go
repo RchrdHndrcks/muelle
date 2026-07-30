@@ -207,3 +207,18 @@ func TestInputEscapeCancelsWithoutSubmitting(t *testing.T) {
 		t.Errorf("submitted=%v closed=%v, want cancelled", submitted, closed)
 	}
 }
+
+// Compose reports a bad configuration over several lines, and the line naming
+// the offending key is rarely the first. Rendering the lot as one string would
+// produce a box wider than the terminal and cut off exactly the part that
+// matters.
+func TestConfirmRendersAMultiLinePrompt(t *testing.T) {
+	overlay := NewConfirm("Invalid configuration",
+		"services.api.ports: invalid port\nline two", false, func(any) {})
+
+	body := overlay.bodyLines(func(_ tui.Style, s string) string { return s })
+
+	if len(body) < 2 || body[0] != "services.api.ports: invalid port" || body[1] != "line two" {
+		t.Errorf("got %q, want one body line per line of the prompt", body)
+	}
+}

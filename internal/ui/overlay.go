@@ -212,7 +212,10 @@ func (o *Overlay) bodyLines(style func(tui.Style, string) string) []string {
 		if o.Danger {
 			hint = style(styleWarning, "y = yes") + "    n = no    (Enter will not confirm)"
 		}
-		return []string{o.Prompt, "", hint}
+		// Split, because a prompt can carry a diagnostic that another
+		// command wrote across several lines. Measuring it as one line
+		// would size the box to the whole thing.
+		return append(strings.Split(o.Prompt, "\n"), "", hint)
 
 	case OverlayMenu:
 		lines := make([]string, 0, len(o.Items)+2)

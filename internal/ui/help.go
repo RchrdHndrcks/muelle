@@ -40,7 +40,8 @@ var helpSections = []helpSection{
 		{"x", "exec menu (database clients, shells)"},
 		{"T", "processes running inside (docker top)"},
 		{"e", "shell straight away (bash, falling back to sh)"},
-		{"s / t / r", "start / stop / restart"},
+		{"s / t", "start / stop"},
+		{"r", "restart, or recreate to apply an edited compose file"},
 		{"p", "pause or unpause"},
 		{"K", "kill (SIGKILL)"},
 		{"D", "remove"},
@@ -50,9 +51,10 @@ var helpSections = []helpSection{
 	}},
 	{"Compose", []helpEntry{
 		{"Enter", "action menu for the project"},
+		{"e", "edit the compose file or .env, then apply it"},
 		{"u", "up -d"},
 		{"d", "down (asks first)"},
-		{"r", "restart"},
+		{"r", "restart (does not apply config changes)"},
 		{"l", "follow logs for every service at once"},
 	}},
 	{"Images, volumes, networks", []helpEntry{
