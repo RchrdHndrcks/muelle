@@ -174,8 +174,14 @@ func (a *App) stateCell(container docker.Container) string {
 		} else {
 			cell = style(tui.Foreground(colourRed), "exit "+strconv.Itoa(code))
 		}
-	} else if glyph := healthGlyph(container.Health()); glyph != "" {
-		cell += " " + style(healthStyle(container.Health()), glyph)
+	} else {
+		health := container.Health()
+		if probed, wasProbed := a.probeHealth(container); wasProbed {
+			health = probed
+		}
+		if glyph := healthGlyph(health); glyph != "" {
+			cell += " " + style(healthStyle(health), glyph)
+		}
 	}
 
 	// The restart count applies either way. A container that crash-looped

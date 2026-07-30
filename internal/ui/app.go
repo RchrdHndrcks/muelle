@@ -9,6 +9,7 @@ import (
 	"github.com/RchrdHndrcks/muelle/internal/compose"
 	"github.com/RchrdHndrcks/muelle/internal/config"
 	"github.com/RchrdHndrcks/muelle/internal/docker"
+	"github.com/RchrdHndrcks/muelle/internal/probe"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
 )
 
@@ -88,6 +89,11 @@ type App struct {
 	// restartCounts is populated only for containers that look unwell;
 	// see docker.Client.RestartCounts for why it is not fetched for all.
 	restartCounts map[string]int
+	// probes asks containers that opt in whether they are well; nil when
+	// the feature is switched off.
+	probes *probe.Watcher
+	// probeResults is what the last sweep found, by container ID.
+	probeResults map[string]probe.Result
 
 	// Per-view selection and scroll, kept separately so switching tabs
 	// returns you to where you were.
@@ -177,6 +183,8 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		runner:         runner,
 		stats:          make(map[string]docker.Stat),
 		restartCounts:  make(map[string]int),
+		probes:         newProbeWatcher(cfg),
+		probeResults:   make(map[string]probe.Result),
 		logs:           NewLogBuffer(5000),
 		logPager:       NewPager(true),
 		inspectPager:   NewPager(false),

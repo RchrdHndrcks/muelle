@@ -287,3 +287,12 @@ func TestLoadReadsTheConfiguredEditor(t *testing.T) {
 		t.Errorf("got %q, want the editor from the file", loaded.Editor)
 	}
 }
+
+// Probing is on by default. It costs one inspect per container, once, and
+// nothing at all for the containers that never set the variable — which is
+// almost all of them.
+func TestHealthProbeIsOnByDefault(t *testing.T) {
+	if !Default().HealthProbe {
+		t.Error("health probing should be available without configuring anything")
+	}
+}

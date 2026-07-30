@@ -35,6 +35,7 @@ var helpSections = []helpSection{
 	}},
 	{"Containers", []helpEntry{
 		{"state column", "✓ healthy  ✗ unhealthy  … starting  ×N restarts"},
+		{"MUELLE_HEALTH", "set on a container, muelle probes that endpoint itself"},
 		{"Enter, i", "inspect (full JSON)"},
 		{"l", "follow logs"},
 		{"x", "exec menu (database clients, shells)"},
