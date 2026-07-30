@@ -129,3 +129,18 @@ func Plural(count int, singular, plural string) string {
 	}
 	return fmt.Sprintf("%d %s", count, plural)
 }
+
+// FormatElapsed renders a duration as minutes and seconds, for things measured
+// while you watch them.
+//
+// FormatDuration is no use here: it collapses everything under a minute into
+// "just now", and a deployment lives almost entirely in that range. A number
+// climbing second by second is most of what tells you the thing is progressing
+// rather than stuck.
+func FormatElapsed(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	seconds := int(d.Seconds())
+	return fmt.Sprintf("%d:%02d", seconds/60, seconds%60)
+}

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/RchrdHndrcks/muelle/internal/config"
+	"github.com/RchrdHndrcks/muelle/internal/deploy"
 	"github.com/RchrdHndrcks/muelle/internal/docker"
 	"github.com/RchrdHndrcks/muelle/internal/probe"
 )
@@ -33,6 +34,18 @@ func (e probesSwept) apply(a *App) {
 	// not leave its last verdict behind for whatever takes its place in the
 	// list.
 	a.probeResults = e.results
+
+	// A service that answered its health endpoint has finished deploying.
+	// The grace window is a guess made when there is nothing better; this is
+	// evidence, so it ends the wait as soon as it lands.
+	if a.deploys == nil {
+		return
+	}
+	for _, container := range a.containers {
+		if result, probed := e.results[container.ID]; probed && result.Healthy {
+			a.deploys.Clear(deploy.KeyFor(container))
+		}
+	}
 }
 
 // probeHealth reports what the last sweep found for a container, and whether
