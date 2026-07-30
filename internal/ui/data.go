@@ -268,6 +268,12 @@ func (a *App) refresh(ctx context.Context) {
 			a.post(restartCountsLoaded{counts: a.docker.RestartCounts(fetchCtx, unwell)})
 		}
 
+		// Probing runs against the containers themselves rather than the
+		// daemon, so it neither waits for nor delays anything above.
+		if a.probes != nil {
+			a.post(probesSwept{results: a.probes.Sweep(fetchCtx, a.docker, containers)})
+		}
+
 		if wantStats {
 			var running []string
 			for _, c := range containers {
@@ -361,6 +367,9 @@ func (a *App) LoadOnce(ctx context.Context) error {
 	}
 	if version, err := a.docker.Ping(ctx); err == nil {
 		a.version = version
+	}
+	if a.probes != nil {
+		probesSwept{results: a.probes.Sweep(ctx, a.docker, containers)}.apply(a)
 	}
 	if a.config.Stats {
 		var running []string

@@ -208,6 +208,61 @@ free to read. Restart counts need one inspect call each, so they are fetched
 only for containers that already look unwell (restarting, unhealthy or dead).
 On a healthy host that list is empty and costs nothing.
 
+### Probing an endpoint yourself
+
+Docker's `HEALTHCHECK` runs the test *inside* the container, so the image has
+to carry something that can make an HTTP request. Images built on `scratch` or
+a distroless base carry no `curl`, no `wget` and no shell — and those are
+exactly the images where "is it actually serving?" is hardest to answer by
+looking.
+
+A container opts in by naming its endpoint in an environment variable, and
+muelle makes the request itself, from the host:
+
+```yaml
+services:
+  api:
+    image: shop/api:1.4
+    ports: ["8080:8080"]
+    environment:
+      MUELLE_HEALTH: /health
+```
+
+Four shapes are accepted:
+
+| Value | Meaning |
+|---|---|
+| `/health` | that path, on the container's only port |
+| `8080/health` | that path, on port 8080 inside the container |
+| `8080` | `/` on port 8080 |
+| `http://x:8080/health` | a full URL; `https` works too |
+
+Anything else is ignored rather than guessed at — a health indicator that is
+quietly wrong is worse than none, because it is believed. Naming the port is
+required when the container has more than one; muelle will not pick.
+
+Any `2xx` is healthy and everything else is not, including a redirect: a
+`/health` that bounces to a login page has not said it is well. Requests are
+`GET`, not `HEAD`, because a handler written for Docker's healthcheck may
+answer `405` to a `HEAD` it considers perfectly healthy.
+
+muelle probes the **published port on the loopback** first, which is the only
+route that works everywhere. A container that publishes nothing is probed at
+its own address on the bridge network, which works when muelle runs on the same
+Linux host as the daemon — a server over SSH, which is what muelle is for —
+but not through Docker Desktop, where the bridge lives inside a VM.
+
+Where a container sets the variable, its verdict replaces the image's own
+healthcheck in the state column. Setting it is a deliberate instruction, made
+by someone with a reason to want that endpoint asked.
+
+Reading an environment variable needs an inspect call, which muelle otherwise
+avoids doing per refresh. It does not have to: a container's environment is
+fixed when it is created, and a recreated container arrives with a new ID. Each
+container is inspected once, and containers that never set the variable cost
+that one call and nothing more. Set `health_probe` to `false` to skip it
+entirely.
+
 ## Age and uptime
 
 Two columns, because they answer different questions:
@@ -462,6 +517,7 @@ Written on first run to `$MUELLE_CONFIG` if set, otherwise
 | `log_wrap` | wrapping in the log viewer. Updated when you press `w` |
 | `log_format` | structured lines rendered as their parts. Updated when you press `F` |
 | `editor` | editor for `e` on a Compose project. Empty leaves the choice to `$VISUAL` and `$EDITOR`, where you have already made it. May carry flags, as in `code --wait` |
+| `health_probe` | probe containers that set `MUELLE_HEALTH`. One inspect per container, once each |
 
 The daemon is found by trying, in order: `DOCKER_HOST`; the well-known socket
 paths (`/var/run/docker.sock`, Docker Desktop, Colima, rootless); and finally

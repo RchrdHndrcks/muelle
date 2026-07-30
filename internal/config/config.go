@@ -55,6 +55,11 @@ type Config struct {
 	// leaves the choice to $VISUAL and $EDITOR, which is where a user has
 	// already made it.
 	Editor string `json:"editor"`
+	// HealthProbe asks containers that set MUELLE_HEALTH whether they are
+	// well, over HTTP, from the host. Reading that variable needs one
+	// inspect per container — once each, since a container's environment
+	// cannot change without it being recreated under a new ID.
+	HealthProbe bool `json:"health_probe"`
 }
 
 // Default returns the configuration used when no file exists.
@@ -70,6 +75,7 @@ func Default() Config {
 		Sort:           "project",
 		LogWrap:        true,
 		LogFormat:      true,
+		HealthProbe:    true,
 	}
 }
 
