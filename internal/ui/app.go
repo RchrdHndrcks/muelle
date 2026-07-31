@@ -8,6 +8,7 @@ import (
 
 	"github.com/RchrdHndrcks/muelle/internal/compose"
 	"github.com/RchrdHndrcks/muelle/internal/config"
+	"github.com/RchrdHndrcks/muelle/internal/deploy"
 	"github.com/RchrdHndrcks/muelle/internal/docker"
 	"github.com/RchrdHndrcks/muelle/internal/probe"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
@@ -94,6 +95,9 @@ type App struct {
 	probes *probe.Watcher
 	// probeResults is what the last sweep found, by container ID.
 	probeResults map[string]probe.Result
+	// deploys follows services through being replaced, so a row can say
+	// what is happening to it rather than vanishing.
+	deploys *deploy.Tracker
 
 	// Per-view selection and scroll, kept separately so switching tabs
 	// returns you to where you were.
@@ -185,6 +189,7 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		restartCounts:  make(map[string]int),
 		probes:         newProbeWatcher(cfg),
 		probeResults:   make(map[string]probe.Result),
+		deploys:        deploy.New(deployGrace, deployPatience),
 		logs:           NewLogBuffer(5000),
 		logPager:       NewPager(true),
 		inspectPager:   NewPager(false),
@@ -253,6 +258,7 @@ func (a *App) Run(ctx context.Context, keys <-chan tui.Key, resize <-chan struct
 		a.setError("%v", ErrComposeMissing)
 	}
 
+	a.watchEvents(ctx)
 	a.refresh(ctx)
 	ticker := time.NewTicker(a.config.RefreshInterval())
 	defer ticker.Stop()

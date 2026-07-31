@@ -263,6 +263,64 @@ container is inspected once, and containers that never set the variable cost
 that one call and nothing more. Set `health_probe` to `false` to skip it
 entirely.
 
+## Watching a deployment
+
+A deployment does not restart a container, it replaces one: the old container
+is destroyed and a new one created under a different ID. Anything keyed on the
+container ID loses track precisely when you most want to be told what is going
+on — the row vanishes from the list and a different row appears in its place,
+with nothing to say the two are the same service.
+
+muelle follows the Compose **service** instead, which is the thing that
+persists, and the row says which phase it is in:
+
+```
+NAME              STATE             CPU     MEM       AGE
+shop-api          recreating 0:03   -       -         3d
+shop-worker       starting 0:07     -       -         3d
+shop-db           up ✓              0.8%    747MiB    3d
+```
+
+The phases are `creating` (a service that had no container), `recreating` (one
+being replaced) and `starting` (running, not yet shown to be serving). The
+timer is how long it has been in *that* phase, which is the question a row
+saying "starting" invites.
+
+There is no percentage, and there cannot be. Docker has no notion of a
+container being partly started; it is created, then it runs. The only figure in
+the whole sequence that is a genuine fraction is the bytes of an image pull,
+and that is known solely to whoever ran the pull — when your CI or a webhook
+deploys, muelle is a bystander watching the daemon, and the daemon reports a
+pull once, when it has finished.
+
+### Where it comes from
+
+This is the one part of muelle that is not polled, because it cannot be: a
+deployment is over in less time than the refresh interval, so polling would
+show the aftermath and never the act. muelle follows the daemon's event stream,
+which reports container lifecycle as it happens and carries Compose's labels on
+every event — so the service each container belonged to is known without
+inspecting anything.
+
+Stopping a container is not deploying it. A stop leaves the container in place;
+only its removal means something is being replaced, and that is the distinction
+muelle keys on. Pressing `t` does not make a row claim a deploy.
+
+A deploy ends when the service says so — a healthcheck reporting in, or a
+`MUELLE_HEALTH` endpoint answering. Where there is neither there is nothing to
+wait for, so a started container is called up after fifteen seconds. That
+window is long enough for a crash-loop to give itself away: a container dying
+after three seconds is destroyed and recreated well inside it, so the row
+cycles through `recreating` rather than ever settling on `up`. A replacement
+that never arrives at all is given up on after a minute.
+
+Because the row is followed by service rather than by container, it stays on
+screen through the gap where no container is running — which is exactly the
+moment that otherwise makes a deployment invisible.
+
+This is live only. `muelle -dump` renders a single frame and exits, and a
+deployment is a thing that happens over time.
+
 ## Age and uptime
 
 Two columns, because they answer different questions:

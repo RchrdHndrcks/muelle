@@ -163,6 +163,15 @@ func (a *App) renderContainers(width, height int) []string {
 // healthcheck is invisible in the state entirely.
 func (a *App) stateCell(container docker.Container) string {
 	style := a.screen.Style
+
+	// A service being replaced says so instead of reporting the state of
+	// whichever container happens to exist at this instant — which during a
+	// deploy is either the one on its way out or the one not serving yet.
+	if state, deploying := a.deployPhase(container); deploying {
+		return style(styleWarning, string(state.Phase)) + " " +
+			style(styleMuted, FormatElapsed(time.Since(state.Since)))
+	}
+
 	cell := style(stateStyle(container.State), StateLabel(container.State))
 
 	// A stopped container's exit code replaces the label: "exit 137" says

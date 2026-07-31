@@ -40,6 +40,12 @@ func (e containersLoaded) apply(a *App) {
 	}
 	a.containers = e.containers
 	a.projects = e.projects
+	// Remembered so a row can still be drawn for a service whose container
+	// has been destroyed and not yet replaced.
+	if a.deploys != nil {
+		a.deploys.Remember(e.containers)
+		a.deploys.Prune(time.Now())
+	}
 	if e.imageUsage != nil {
 		a.imageUsage = e.imageUsage
 	}
@@ -434,11 +440,12 @@ func (refreshRequested) apply(a *App) {
 // filteredContainers returns the containers matching the current filter, in
 // the current sort order.
 func (a *App) filteredContainers() []docker.Container {
-	matched := a.containers
+	listed := a.withGhosts()
+	matched := listed
 	if a.filter != "" {
 		needle := strings.ToLower(a.filter)
-		matched = make([]docker.Container, 0, len(a.containers))
-		for _, c := range a.containers {
+		matched = make([]docker.Container, 0, len(listed))
+		for _, c := range listed {
 			haystack := strings.ToLower(c.Name() + " " + c.Image + " " + c.Project() + " " + c.State)
 			if strings.Contains(haystack, needle) {
 				matched = append(matched, c)
