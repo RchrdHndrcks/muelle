@@ -151,3 +151,23 @@ func names(groups []Group) []string {
 	}
 	return out
 }
+
+// Under a heading that already says "shop", every row repeating it spends the
+// widest column on the word the eye has just read.
+func TestShortenDropsTheGroupsPrefix(t *testing.T) {
+	cases := map[string]struct{ name, group, want string }{
+		"compose service":       {"shop-db", "shop", "db"},
+		"deeper name":           {"shop-db-replica", "shop", "db-replica"},
+		"compose numbering":     {"shop-db-1", "shop", "db-1"},
+		"not the group's name":  {"legacy-cart", "shop", "legacy-cart"},
+		"name is the group":     {"shop", "shop", "shop"},
+		"prefix without hyphen": {"shopfront", "shop", "shopfront"},
+		"no group":              {"shop-db", "", "shop-db"},
+	}
+
+	for label, c := range cases {
+		if got := Shorten(c.name, c.group); got != c.want {
+			t.Errorf("%s: got %q, want %q", label, got, c.want)
+		}
+	}
+}

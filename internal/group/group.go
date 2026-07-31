@@ -137,3 +137,25 @@ func bucketByPrefix(containers []docker.Container) (map[string][]docker.Containe
 	}
 	return buckets, order
 }
+
+// Shorten drops the application's name from the front of a container's,
+// leaving the part that says which container it is.
+//
+// Under a heading that already reads "shop", every row repeating it spends the
+// widest column in the list on the word the eye has just read. What remains —
+// db, db-replica, api — is what actually distinguishes one row from the next.
+//
+// Only the group's own name followed by a hyphen is removed. A container whose
+// name does not begin with it is left alone: a Compose project can be called
+// anything, and its containers need not be named after it, so trimming
+// anything else would be inventing a name rather than shortening one.
+func Shorten(name, group string) string {
+	if group == "" || name == group {
+		return name
+	}
+	short, found := strings.CutPrefix(name, group+"-")
+	if !found || short == "" {
+		return name
+	}
+	return short
+}
