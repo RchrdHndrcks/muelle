@@ -251,7 +251,7 @@ func TestCursorFollowsContainerAcrossReorder(t *testing.T) {
 		"second-id": {CPUPercent: 99},
 		"third-id":  {CPUPercent: 50},
 	}
-	app.selection[ViewContainers] = 0 // "first"
+	app.selectFirstContainer() // "first", whichever row it lands on
 
 	before, _ := app.selectedContainer()
 	press(app, runeKey('o')) // default -> cpu

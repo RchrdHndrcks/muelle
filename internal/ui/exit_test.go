@@ -77,6 +77,8 @@ func TestStatusBarExplainsSelectedContainersExit(t *testing.T) {
 		{ID: "a", Names: []string{"/crashed"}, State: "exited", Status: "Exited (137) 1 minute ago"},
 	}
 
+	app.selectFirstContainer()
+
 	bar := app.renderStatusBar(160)
 
 	if !strings.Contains(bar, "out of memory") {

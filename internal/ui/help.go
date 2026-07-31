@@ -48,6 +48,8 @@ var helpSections = []helpSection{
 		{"K", "kill (SIGKILL)"},
 		{"D", "remove"},
 		{"a", "include stopped containers"},
+		{"A", "group the list by application"},
+		{"z, Enter on a heading", "fold an application away, or open it"},
 		{"o", "cycle sort: project, cpu, memory, age, state"},
 		{"P", "system prune (reclaim disk)"},
 	}},

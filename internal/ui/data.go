@@ -46,6 +46,7 @@ func (e containersLoaded) apply(a *App) {
 		a.deploys.Remember(e.containers)
 		a.deploys.Prune(time.Now())
 	}
+	a.placeSelection()
 	if e.imageUsage != nil {
 		a.imageUsage = e.imageUsage
 	}
@@ -361,6 +362,7 @@ func (a *App) LoadOnce(ctx context.Context) error {
 		}
 	}
 	a.containers = containers
+	a.placeSelection()
 	a.imageUsage = docker.ImageUsage(all)
 	if images, err := a.docker.Images(ctx); err == nil {
 		a.images = images
@@ -440,28 +442,43 @@ func (refreshRequested) apply(a *App) {
 // filteredContainers returns the containers matching the current filter, in
 // the current sort order.
 func (a *App) filteredContainers() []docker.Container {
-	listed := a.withGhosts()
-	matched := listed
-	if a.filter != "" {
-		needle := strings.ToLower(a.filter)
-		matched = make([]docker.Container, 0, len(listed))
-		for _, c := range listed {
-			haystack := strings.ToLower(c.Name() + " " + c.Image + " " + c.Project() + " " + c.State)
-			if strings.Contains(haystack, needle) {
-				matched = append(matched, c)
-			}
+	return a.sortOrder(a.matching(a.withGhosts()))
+}
+
+// matching narrows a list of containers by the active filter.
+func (a *App) matching(containers []docker.Container) []docker.Container {
+	if a.filter == "" {
+		return containers
+	}
+	needle := strings.ToLower(a.filter)
+	matched := make([]docker.Container, 0, len(containers))
+	for _, c := range containers {
+		haystack := strings.ToLower(c.Name() + " " + c.Image + " " + c.Project() + " " + c.State)
+		if strings.Contains(haystack, needle) {
+			matched = append(matched, c)
 		}
 	}
+	return matched
+}
 
+// sortedContainers returns everything the view would list, in order, before
+// the filter narrows it. Grouping needs this: which application a container
+// belongs to must not depend on what is being searched for.
+func (a *App) sortedContainers() []docker.Container {
+	return a.sortOrder(a.withGhosts())
+}
+
+// sortOrder applies the chosen ordering.
+func (a *App) sortOrder(containers []docker.Container) []docker.Container {
 	if a.sortKey == SortDefault {
 		// The daemon response is already in this order, so sorting it
 		// again would only cost a copy.
-		return matched
+		return containers
 	}
-	// Copy before sorting: a.containers is the refresh result and sorting
-	// it in place would reorder the model behind the view.
-	ordered := make([]docker.Container, len(matched))
-	copy(ordered, matched)
+	// Copy before sorting: the caller's slice may be a.containers itself,
+	// and sorting it in place would reorder the model behind the view.
+	ordered := make([]docker.Container, len(containers))
+	copy(ordered, containers)
 	SortContainers(ordered, a.sortKey, a.stats)
 	return ordered
 }

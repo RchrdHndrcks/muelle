@@ -94,6 +94,8 @@ Press `?` in the app for the full reference.
 | `K` | kill (SIGKILL) |
 | `D` | remove |
 | `a` | include stopped containers |
+| `A` | group the list by application |
+| `z` | fold an application away (also `Enter` on a heading) |
 | `P` | prune (images and volumes views) |
 | `S` | toggle the host metrics panel |
 | `Ctrl-r` | refresh now |
@@ -188,13 +190,73 @@ so it refreshes once a minute rather than on every tick.
 The panel hides itself in the log and inspect viewers, and on a terminal too
 short to leave a usable list behind it.
 
+## Grouping by application
+
+Docker has no notion of an application. Compose comes closest, stamping a
+project label on everything it creates, but plenty of containers are started
+with `docker run` and carry nothing at all — and those are exactly the ones you
+still think of as belonging together, because you named them that way.
+`shop-db` and `shop-db-replica` are one application to everyone except the
+daemon.
+
+`A` gathers the list under one heading per application:
+
+```
+NAME                STATE     CPU    MEM      IMAGE
+▾ shop              2/2 up    1.2%   1.1GiB
+  shop-db           up ✓      0.5%   390MiB   mysql:8.0
+  shop-db-replica   up        0.7%   758MiB   mysql:8.0
+▾ blog              2/2 up    0.3%   165MiB   compose
+  blog-web          up        0.2%   120MiB   blog/web:2.1
+  blog-cache        up ✓      0.1%    45MiB   redis:7-alpine
+▸ ungrouped         0/28 up
+```
+
+An application is read from two places, in this order:
+
+1. **The Compose project**, where there is one. That is you having already said
+   which containers belong together, so nothing muelle infers overrides it.
+2. **The name**, up to the first hyphen. A prefix needs at least two containers
+   to count — one container with a hyphen in its name is not an application,
+   and without that rule a host carrying a few dozen one-off containers becomes
+   a few dozen one-member groups, which is the flat list again with twice as
+   many rows.
+
+Everything else lands in `ungrouped`. Docker's own generated names use
+underscores (`agitated_gagarin`), so they never share a prefix and fall there
+without needing a rule of their own. A standalone container named after an
+existing project joins it: a database started by hand as `shop-cache` belongs
+to the `shop` stack rather than beside it.
+
+The heading carries the application's totals, which is the reading grouping
+exists to make possible — what a whole application costs, rather than what each
+of its parts does. Sorting by `cpu` or `memory` orders the applications by
+those totals and their containers within them, so "which application is eating
+this host" becomes a question the list answers.
+
+`z` folds an application away, or `Enter` on a heading. Grouping is on by
+default; `A` turns it off, and both that and which applications are folded are
+remembered between sessions, like the ordering and the log viewer's settings —
+collapsing `ungrouped` is something you do once.
+
+Container keys do nothing while a heading is selected. They could act on the
+whole group, but a `restart` that touches six containers because the cursor was
+one line high is exactly the accident not to build into a tool you run on a
+server.
+
+Filtering keeps the heading of any application with matches and opens it if it
+was folded, so a search never looks like it found nothing. Which application a
+container belongs to is worked out from the whole host rather than from the
+filtered list: otherwise searching for one container would dissolve the group
+it is in and move the row as you typed.
+
 ## Health and restart indicators
 
 The state column carries a healthcheck marker and, for containers that look
 unwell, how many times they have restarted:
 
 ```
-engi-mysql-1     up ✓          healthcheck passing
+shop-db-1        up ✓          healthcheck passing
 api-worker       up ✗×12       healthcheck failing, restarted 12 times
 queue-consumer   restart ×47   crash-looping
 web              up            no healthcheck defined

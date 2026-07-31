@@ -27,14 +27,16 @@ func press(app *App, key tui.Key) {
 func TestNavigationMovesSelection(t *testing.T) {
 	app := loadedApp(t)
 
+	start := app.selected()
+
 	press(app, runeKey('j'))
-	if got := app.selected(); got != 1 {
-		t.Errorf("got %d after j, want 1", got)
+	if got := app.selected(); got != start+1 {
+		t.Errorf("got %d after j, want one below %d", got, start)
 	}
 
 	press(app, runeKey('k'))
-	if got := app.selected(); got != 0 {
-		t.Errorf("got %d after k, want 0", got)
+	if got := app.selected(); got != start {
+		t.Errorf("got %d after k, want back to %d", got, start)
 	}
 }
 
@@ -134,13 +136,15 @@ func TestArrowKeysWrapAroundTheViewList(t *testing.T) {
 func TestVerticalArrowsStillMoveSelection(t *testing.T) {
 	app := loadedApp(t)
 
+	start := app.selected()
+
 	press(app, typeKey(tui.KeyDown))
 
 	if app.view != ViewContainers {
 		t.Errorf("down changed the view to %v", app.view.Title())
 	}
-	if app.selected() != 1 {
-		t.Errorf("got selection %d, want down to move it", app.selected())
+	if app.selected() != start+1 {
+		t.Errorf("got selection %d, want down to move it below %d", app.selected(), start)
 	}
 }
 

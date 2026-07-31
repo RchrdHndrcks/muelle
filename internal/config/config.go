@@ -55,6 +55,13 @@ type Config struct {
 	// leaves the choice to $VISUAL and $EDITOR, which is where a user has
 	// already made it.
 	Editor string `json:"editor"`
+	// GroupContainers gathers the container list under one heading per
+	// application, as G toggles.
+	GroupContainers bool `json:"group_containers"`
+	// CollapsedGroups are the applications folded away, remembered for the
+	// same reason the log viewer's settings are: the bucket of stray
+	// containers is collapsed once and should stay that way.
+	CollapsedGroups []string `json:"collapsed_groups"`
 	// HealthProbe asks containers that set MUELLE_HEALTH whether they are
 	// well, over HTTP, from the host. Reading that variable needs one
 	// inspect per container — once each, since a container's environment
@@ -65,17 +72,18 @@ type Config struct {
 // Default returns the configuration used when no file exists.
 func Default() Config {
 	return Config{
-		ComposeDirs:    []string{"~/deployments"},
-		RefreshSeconds: 3,
-		LogTail:        500,
-		Stats:          true,
-		StopTimeout:    10,
-		Colour:         true,
-		SystemPanel:    true,
-		Sort:           "project",
-		LogWrap:        true,
-		LogFormat:      true,
-		HealthProbe:    true,
+		ComposeDirs:     []string{"~/deployments"},
+		RefreshSeconds:  3,
+		LogTail:         500,
+		Stats:           true,
+		StopTimeout:     10,
+		Colour:          true,
+		SystemPanel:     true,
+		Sort:            "project",
+		LogWrap:         true,
+		LogFormat:       true,
+		HealthProbe:     true,
+		GroupContainers: true,
 	}
 }
 
