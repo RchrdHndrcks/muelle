@@ -31,6 +31,9 @@ type Row struct {
 	Container docker.Container
 	// Header is nil on a container row.
 	Header *Header
+	// Group names the application the row belongs to, so a container row
+	// knows what the heading above it already says.
+	Group string
 }
 
 // rows builds the container list as it is drawn.
@@ -71,8 +74,15 @@ func (a *App) rows() []Row {
 		if header.Collapsed {
 			continue
 		}
+		// Nothing is trimmed under the ungrouped bucket: "ungrouped" is
+		// what muelle calls containers that belong to nothing, not a
+		// prefix anyone gave them.
+		name := found.Name
+		if found.Source == group.Ungrouped {
+			name = ""
+		}
 		for _, container := range matched {
-			rows = append(rows, Row{Container: container})
+			rows = append(rows, Row{Container: container, Group: name})
 		}
 	}
 	return rows
@@ -175,14 +185,7 @@ func (a *App) groupNameOf(row Row) string {
 	if row.Header != nil {
 		return row.Header.Name
 	}
-	for _, found := range group.Build(a.filteredContainers()) {
-		for _, container := range found.Containers {
-			if container.ID == row.Container.ID {
-				return found.Name
-			}
-		}
-	}
-	return ""
+	return row.Group
 }
 
 // selectHeader moves the cursor onto a group's heading.

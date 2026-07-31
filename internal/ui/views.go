@@ -127,7 +127,7 @@ func (a *App) renderContainers(width, height int) []string {
 		if rows[i].Header != nil {
 			cells = a.headerCells(*rows[i].Header)
 		} else {
-			cells = a.containerCells(rows[i].Container)
+			cells = a.containerCells(rows[i])
 		}
 
 		row := RenderRow(cells, widths)
@@ -140,16 +140,19 @@ func (a *App) renderContainers(width, height int) []string {
 }
 
 // containerCells renders one container as the columns of the list.
-func (a *App) containerCells(container docker.Container) []string {
+func (a *App) containerCells(row Row) []string {
 	style := a.screen.Style
+	container := row.Container
 	stat, hasStat := a.stats[container.ID]
 
-	// Indented under the heading it belongs to. Without it the headings and
-	// their containers share a column and the whole thing reads as a flat
-	// list with odd extra rows in it.
+	// Indented under the heading it belongs to, and with the application's
+	// name dropped from the front: the heading has just said it, and the
+	// widest column in the list is better spent on what tells one row from
+	// the next. Without the indent the headings and their containers share a
+	// column and the whole thing reads as a flat list with odd rows in it.
 	name := container.Name()
 	if a.grouped {
-		name = "  " + name
+		name = "  " + group.Shorten(name, row.Group)
 	}
 
 	cells := []string{

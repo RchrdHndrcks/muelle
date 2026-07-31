@@ -91,7 +91,10 @@ func TestFrameRendersContainerList(t *testing.T) {
 
 	frame := frameText(app)
 
-	for _, want := range []string{"shop-api", "shop-db", "standalone-cache", "mysql:8.0", "8080->8080/tcp"} {
+	// Grouped, which is the default: the heading carries the application's
+	// name and the rows carry what tells them apart, so "shop-api" appears
+	// as "shop" above "api" rather than as one string.
+	for _, want := range []string{"shop", "api", "db", "standalone-cache", "mysql:8.0", "8080->8080/tcp"} {
 		if !strings.Contains(frame, want) {
 			t.Errorf("frame is missing %q:\n%s", want, frame)
 		}
@@ -101,9 +104,31 @@ func TestFrameRendersContainerList(t *testing.T) {
 	}
 }
 
+// Ungrouped there is no heading to carry the application's name, so each row
+// has to carry the whole thing.
+func TestFrameRendersWholeNamesUngrouped(t *testing.T) {
+	app := newTestApp(t)
+	app.SetShowAll(true)
+	app.grouped = false
+	if err := app.LoadOnce(context.Background()); err != nil {
+		t.Fatalf("LoadOnce: %v", err)
+	}
+
+	frame := frameText(app)
+
+	for _, want := range []string{"shop-api", "shop-db", "standalone-cache"} {
+		if !strings.Contains(frame, want) {
+			t.Errorf("frame is missing %q:\n%s", want, frame)
+		}
+	}
+}
+
 // Without -all, stopped containers are hidden.
 func TestFrameHidesStoppedContainersByDefault(t *testing.T) {
 	app := newTestApp(t)
+	// Ungrouped, so the assertion is about which containers are listed
+	// rather than about how a heading splits their names.
+	app.grouped = false
 	if err := app.LoadOnce(context.Background()); err != nil {
 		t.Fatalf("LoadOnce: %v", err)
 	}

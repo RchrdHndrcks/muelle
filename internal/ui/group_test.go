@@ -222,7 +222,7 @@ func TestCollapsedGroupsAreRemembered(t *testing.T) {
 func TestContainersAreIndentedUnderTheirHeading(t *testing.T) {
 	app := groupedApp(t)
 
-	name := app.containerCells(app.containers[0])[0]
+	name := app.containerCells(app.rows()[1])[0]
 
 	if !strings.HasPrefix(name, "  ") {
 		t.Errorf("got %q, want it indented under its heading", name)
@@ -234,7 +234,7 @@ func TestContainersAreNotIndentedWithoutGrouping(t *testing.T) {
 	app := groupedApp(t)
 	app.grouped = false
 
-	name := app.containerCells(app.containers[0])[0]
+	name := app.containerCells(app.rows()[1])[0]
 
 	if strings.HasPrefix(name, " ") {
 		t.Errorf("got %q, want the name flush left", name)
@@ -285,5 +285,61 @@ func TestSelectionIsBoundedByRowsNotContainers(t *testing.T) {
 
 	if got, want := app.currentLength(), len(app.rows()); got != want {
 		t.Errorf("got %d, want %d rows", got, want)
+	}
+}
+
+// Grouped, the heading carries the application's name and the rows carry what
+// distinguishes them.
+func TestGroupedRowsDropTheApplicationName(t *testing.T) {
+	app := groupedApp(t)
+
+	names := []string{}
+	for _, row := range app.rows() {
+		if row.Header == nil {
+			names = append(names, strings.TrimSpace(app.containerCells(row)[0]))
+		}
+	}
+
+	want := []string{"db", "db-replica", "db"}
+	if len(names) != len(want) {
+		t.Fatalf("got %v, want %v", names, want)
+	}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Fatalf("got %v, want %v", names, want)
+		}
+	}
+}
+
+// Ungrouped, there is no heading saying the rest, so the full name is all the
+// row has.
+func TestFlatRowsKeepTheWholeName(t *testing.T) {
+	app := groupedApp(t)
+	app.grouped = false
+
+	name := app.containerCells(app.rows()[0])[0]
+
+	if name != "shop-db" {
+		t.Errorf("got %q, want the whole name", name)
+	}
+}
+
+// A container that is not named after its application keeps its name: there is
+// nothing of the heading in it to remove.
+func TestARowNotNamedAfterItsApplicationIsUntouched(t *testing.T) {
+	app := groupedApp(t)
+	app.containers = append(app.containers, docker.Container{
+		ID: "odd", Names: []string{"/legacy-cart"}, State: "running", Status: "Up 2 hours",
+		Labels: map[string]string{docker.LabelProject: "shop", docker.LabelService: "cart"},
+	})
+
+	var found bool
+	for _, row := range app.rows() {
+		if row.Header == nil && row.Container.ID == "odd" {
+			found = strings.TrimSpace(app.containerCells(row)[0]) == "legacy-cart"
+		}
+	}
+	if !found {
+		t.Error("a container not named after its application should keep its name")
 	}
 }
