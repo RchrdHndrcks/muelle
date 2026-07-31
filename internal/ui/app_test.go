@@ -244,8 +244,8 @@ func TestSelectionClampsWhenListShrinks(t *testing.T) {
 	app.selection[ViewContainers] = 2
 	app.filter = "cache" // narrows the list to one entry
 
-	if got := app.selected(); got != 0 {
-		t.Errorf("got selection %d, want it clamped to the only remaining row", got)
+	if got, last := app.selected(), len(app.rows())-1; got != last {
+		t.Errorf("got selection %d, want it clamped to the last row (%d)", got, last)
 	}
 	if _, ok := app.selectedContainer(); !ok {
 		t.Error("a non-empty list should still have a selected container")

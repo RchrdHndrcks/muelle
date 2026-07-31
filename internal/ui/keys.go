@@ -209,18 +209,23 @@ func (a *App) handleListKey(ctx context.Context, key tui.Key) bool {
 // a different container — and the next keystroke would act on something the
 // user did not choose.
 func (a *App) reselect(containerID string) {
-	list := a.filteredContainers()
-	if len(list) == 0 || containerID == "" {
-		a.selection[ViewContainers] = clamp(a.selection[ViewContainers], len(list))
+	// Rows, not containers. With grouping on the list carries headings, so
+	// a container's index in the container list is not the row it is drawn
+	// on — and putting the cursor there would land it a heading or two
+	// above the container it was meant to follow.
+	rows := a.rows()
+	if len(rows) == 0 {
 		return
 	}
-	for i, container := range list {
-		if container.ID == containerID {
-			a.selection[ViewContainers] = i
-			return
+	if containerID != "" {
+		for i, row := range rows {
+			if row.Header == nil && row.Container.ID == containerID {
+				a.selection[ViewContainers] = i
+				return
+			}
 		}
 	}
-	a.selection[ViewContainers] = clamp(a.selection[ViewContainers], len(list))
+	a.selection[ViewContainers] = clamp(a.selection[ViewContainers], len(rows))
 }
 
 // pageSize is how far Ctrl-D and Page Down move: half a screen, matching the
@@ -238,14 +243,30 @@ func (a *App) pageSize() int {
 func (a *App) openFilterPrompt() {
 	a.overlay = NewInput("Filter "+a.view.Title(), "match:", a.filter, func(value any) {
 		filter, _ := value.(string)
-		a.filter = strings.TrimSpace(filter)
-		a.selection[a.view] = 0
-		a.offset[a.view] = 0
+		a.applyFilter(strings.TrimSpace(filter))
 	})
 }
 
 // handleContainerKey handles the container view's actions.
 func (a *App) handleContainerKey(ctx context.Context, key tui.Key) bool {
+	// The grouping keys act on rows rather than containers, and a heading is
+	// a row that is not one, so they are answered before anything asks for a
+	// selected container.
+	switch {
+	case key.IsRune('A'):
+		a.toggleGrouping()
+		return true
+	case key.IsRune('z'):
+		a.toggleCollapse()
+		return true
+	}
+	if row, ok := a.selectedRow(); ok && row.Header != nil && key.Type == tui.KeyEnter {
+		// Enter is inspect on a container; on a heading there is nothing
+		// to inspect, and folding is what the row is for.
+		a.toggleCollapse()
+		return true
+	}
+
 	container, ok := a.selectedContainer()
 	if !ok {
 		// The toggle still works with an empty list; it is usually what

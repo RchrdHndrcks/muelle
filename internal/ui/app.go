@@ -106,6 +106,13 @@ type App struct {
 
 	// showAll toggles between running-only and every container.
 	showAll bool
+	// grouped gathers the list under one heading per application.
+	grouped bool
+	// collapsed names the applications folded away.
+	collapsed map[string]bool
+	// selectionPlaced records that the cursor has been put somewhere
+	// sensible for the first time; see placeSelection.
+	selectionPlaced bool
 	// metrics feeds the host summary panel.
 	metrics HostMetrics
 	// showSystem controls whether that panel is drawn.
@@ -190,6 +197,8 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		probes:         newProbeWatcher(cfg),
 		probeResults:   make(map[string]probe.Result),
 		deploys:        deploy.New(deployGrace, deployPatience),
+		grouped:        cfg.GroupContainers,
+		collapsed:      collapsedSet(cfg.CollapsedGroups),
 		logs:           NewLogBuffer(5000),
 		logPager:       NewPager(true),
 		inspectPager:   NewPager(false),
@@ -436,7 +445,10 @@ func mergeOverlay(base, overlay []string, height int) []string {
 func (a *App) currentLength() int {
 	switch a.view {
 	case ViewContainers:
-		return len(a.filteredContainers())
+		// Rows, not containers: with grouping on the list carries
+		// headings too, and bounding the cursor by the container count
+		// would strand it on one whenever the list shrank.
+		return len(a.rows())
 	case ViewCompose:
 		return len(a.filteredProjects())
 	case ViewImages:
@@ -460,11 +472,15 @@ func (a *App) selected() int {
 
 // selectedContainer returns the highlighted container, if any.
 func (a *App) selectedContainer() (docker.Container, bool) {
-	list := a.filteredContainers()
-	if len(list) == 0 {
+	// A group heading is a row but not a container. Saying so here is what
+	// makes every container key a no-op while one is selected: they all
+	// already handle there being nothing selected, so a restart cannot land
+	// on six containers because the cursor was one line high.
+	row, ok := a.selectedRow()
+	if !ok || row.Header != nil {
 		return docker.Container{}, false
 	}
-	return list[clamp(a.selection[ViewContainers], len(list))], true
+	return row.Container, true
 }
 
 // selectedProject returns the highlighted Compose project, if any.

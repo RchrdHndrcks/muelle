@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/RchrdHndrcks/muelle/internal/docker"
+	"github.com/RchrdHndrcks/muelle/internal/group"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
 )
 
@@ -105,9 +106,9 @@ func (a *App) containerColumns() []Column {
 
 func (a *App) renderContainers(width, height int) []string {
 	style := a.screen.Style
-	containers := a.filteredContainers()
+	rows := a.rows()
 
-	if len(containers) == 0 {
+	if len(rows) == 0 {
 		return a.emptyState(width, height, "No containers."+a.showAllHint())
 	}
 
@@ -118,30 +119,16 @@ func (a *App) renderContainers(width, height int) []string {
 	rowsAvailable := height - 1
 
 	selected := a.selected()
-	start, end, offset := visibleWindow(len(containers), rowsAvailable, selected, a.offset[ViewContainers])
+	start, end, offset := visibleWindow(len(rows), rowsAvailable, selected, a.offset[ViewContainers])
 	a.offset[ViewContainers] = offset
 
 	for i := start; i < end; i++ {
-		container := containers[i]
-		stat, hasStat := a.stats[container.ID]
-
-		cells := []string{
-			container.Name(),
-			a.stateCell(container),
+		var cells []string
+		if rows[i].Header != nil {
+			cells = a.headerCells(*rows[i].Header)
+		} else {
+			cells = a.containerCells(rows[i].Container)
 		}
-		if a.config.Stats {
-			cells = append(cells,
-				style(usageStyle(stat.CPUPercent), FormatPercent(stat.CPUPercent, hasStat)),
-				statCell(style, stat.MemUsage, stat.MemPercent, hasStat),
-			)
-		}
-		uptime, running := container.Uptime()
-		cells = append(cells,
-			style(styleMuted, ShortenImage(container.Image, 24)),
-			container.PortSummary(),
-			style(styleMuted, FormatAge(container.Created)),
-			style(styleMuted, FormatUptime(uptime, running)),
-		)
 
 		row := RenderRow(cells, widths)
 		if i == selected {
@@ -150,6 +137,67 @@ func (a *App) renderContainers(width, height int) []string {
 		lines = append(lines, row)
 	}
 	return lines
+}
+
+// containerCells renders one container as the columns of the list.
+func (a *App) containerCells(container docker.Container) []string {
+	style := a.screen.Style
+	stat, hasStat := a.stats[container.ID]
+
+	// Indented under the heading it belongs to. Without it the headings and
+	// their containers share a column and the whole thing reads as a flat
+	// list with odd extra rows in it.
+	name := container.Name()
+	if a.grouped {
+		name = "  " + name
+	}
+
+	cells := []string{
+		name,
+		a.stateCell(container),
+	}
+	if a.config.Stats {
+		cells = append(cells,
+			style(usageStyle(stat.CPUPercent), FormatPercent(stat.CPUPercent, hasStat)),
+			statCell(style, stat.MemUsage, stat.MemPercent, hasStat),
+		)
+	}
+	uptime, running := container.Uptime()
+	return append(cells,
+		style(styleMuted, ShortenImage(container.Image, 24)),
+		container.PortSummary(),
+		style(styleMuted, FormatAge(container.Created)),
+		style(styleMuted, FormatUptime(uptime, running)),
+	)
+}
+
+// headerCells renders an application's summary in the same columns as the
+// containers beneath it, so the totals line up under the figures they total.
+func (a *App) headerCells(header Header) []string {
+	style := a.screen.Style
+
+	marker := "▾ "
+	if header.Collapsed {
+		marker = "▸ "
+	}
+	cells := []string{
+		style(tui.StyleBold, marker+header.Name),
+		style(styleMuted, fmt.Sprintf("%d/%d up", header.Running, header.Total)),
+	}
+	if a.config.Stats {
+		cells = append(cells,
+			style(usageStyle(header.CPUPercent), FormatPercent(header.CPUPercent, header.Total > 0)),
+			statCell(style, header.MemUsage, 0, header.MemUsage > 0),
+		)
+	}
+	// The remaining columns describe a container, and a group is not one.
+	// An image or an age here would be the first member's, presented as the
+	// application's.
+	origin := ""
+	if header.Source == group.FromCompose {
+		origin = "compose"
+	}
+	return append(cells, style(styleMuted, origin), "", "", "")
 }
 
 // stateCell renders a container's state with everything the word alone hides:
@@ -527,7 +575,7 @@ func (a *App) contextHints() string {
 	}
 	switch a.view {
 	case ViewContainers:
-		return "enter inspect  l logs  x exec  s start  t stop  r restart  D remove  T top  a all  o sort  P prune  S system  / filter  ? help"
+		return "enter inspect  l logs  x exec  s start  t stop  r restart  D remove  T top  a all  A group  o sort  P prune  / filter  ? help"
 	case ViewCompose:
 		return "enter actions  l logs  e edit  u up  d down  r restart  / filter  ? help"
 	case ViewImages:
