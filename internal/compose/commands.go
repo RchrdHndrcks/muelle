@@ -69,6 +69,9 @@ const (
 	ActionPS       Action = "ps"
 	ActionLogs     Action = "logs"
 	ActionConfig   Action = "config"
+	// ActionConfigHash is never offered in a menu: it exists for muelle to
+	// read, not the user to run. See ServiceHashes.
+	ActionConfigHash Action = "config-hash"
 )
 
 // args returns the subcommand and flags the action runs as.
@@ -92,6 +95,11 @@ func (a Action) args() []string {
 		// container, which is what makes it safe to run before an edit
 		// is applied.
 		return []string{"config", "-q"}
+	case ActionConfigHash:
+		// Prints one "<service> <hash>" line per service. The "*" is an
+		// argument for Compose, not a glob for a shell — argv is executed
+		// directly — so it needs no quoting and cannot expand.
+		return []string{"config", "--hash", "*"}
 	default:
 		return []string{string(a)}
 	}

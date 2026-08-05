@@ -56,7 +56,7 @@ var helpSections = []helpSection{
 	{"Compose", []helpEntry{
 		{"Enter", "action menu for the project"},
 		{"e", "edit the compose file or .env, then apply it"},
-		{"u", "up -d"},
+		{"u", "up -d, after showing what it would recreate"},
 		{"d", "down (asks first)"},
 		{"r", "restart (does not apply config changes)"},
 		{"l", "follow logs for every service at once"},

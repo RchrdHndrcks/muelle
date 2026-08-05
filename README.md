@@ -605,6 +605,15 @@ view compares each service against the config hash on its running container and
 recreates only the ones that differ — which is why those containers, and only
 those, come back with a fresh age.
 
+Before running, `u` shows that comparison rather than leaving it implicit:
+muelle asks Compose what the files hash to now (`config --hash`), holds it
+against the hash stamped on each container, and lists the services that will be
+recreated — changed, or without a container at all — apart from those left as
+they are. Enter runs the up, Esc cancels it. The preview is best-effort by
+design: where the hashes cannot be had — a Compose too old for `--hash`, say —
+`u` runs directly, exactly as it would have without the preview, because a
+courtesy that can block the action is an obstacle.
+
 ## Configuration
 
 Written on first run to `$MUELLE_CONFIG` if set, otherwise
