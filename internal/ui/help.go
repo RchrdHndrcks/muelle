@@ -65,6 +65,7 @@ var helpSections = []helpSection{
 		{"D", "remove the selected item"},
 		{"P", "prune unused items"},
 		{"u", "images: show only those no container uses"},
+		{"b", "volumes: back up to a tarball in backup_dir"},
 	}},
 	{"Log viewer", []helpEntry{
 		{"f", "toggle follow (scrolling up pauses it)"},
