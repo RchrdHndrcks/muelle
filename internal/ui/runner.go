@@ -51,48 +51,76 @@ func DockerCLIAvailable() bool {
 // the command exits, wiping output the user needed to read — a failed "compose
 // up" being the obvious case.
 func (r *Runner) Run(argv []string, pauseAfter bool) error {
-	if len(argv) == 0 {
-		return errors.New("no command to run")
+	_, err := r.RunSequence([][]string{argv}, pauseAfter)
+	return err
+}
+
+// RunSequence executes several commands under a single terminal handover,
+// stopping at the first failure. It returns how many commands finished
+// cleanly alongside any error, so a caller chaining "pull" and "up" can name
+// the step that stopped the sequence.
+//
+// One handover rather than one per command, because the sequence's output is
+// read as a whole: resuming the TUI between commands would repaint the
+// alternate screen over the first command's output at the moment the second
+// one starts.
+func (r *Runner) RunSequence(argvs [][]string, pauseAfter bool) (int, error) {
+	if len(argvs) == 0 {
+		return 0, errors.New("no command to run")
 	}
-	if _, err := exec.LookPath(argv[0]); err != nil {
-		if argv[0] == "docker" {
-			return ErrDockerCLIMissing
+	// Every binary is looked up before the terminal is handed over: a
+	// missing one is better reported in the status bar than scrawled on a
+	// suspended screen, and a sequence whose later step could never run
+	// should not start.
+	for _, argv := range argvs {
+		if len(argv) == 0 {
+			return 0, errors.New("no command to run")
 		}
-		return fmt.Errorf("%s: not found on PATH", argv[0])
+		if _, err := exec.LookPath(argv[0]); err != nil {
+			if argv[0] == "docker" {
+				return 0, ErrDockerCLIMissing
+			}
+			return 0, fmt.Errorf("%s: not found on PATH", argv[0])
+		}
 	}
 
 	if r.Suspend != nil {
 		if err := r.Suspend(); err != nil {
-			return fmt.Errorf("suspend terminal: %w", err)
+			return 0, fmt.Errorf("suspend terminal: %w", err)
 		}
 	}
-	// Restoring the TUI must happen whatever the child did, including
-	// when it panicked the terminal into a strange state.
+	// Restoring the TUI must happen whatever the children did, including
+	// when one panicked the terminal into a strange state.
 	defer func() {
 		if r.Resume != nil {
 			_ = r.Resume()
 		}
 	}()
 
-	fmt.Fprintf(os.Stdout, "\r\n\x1b[1m$ %s\x1b[0m\r\n\r\n", strings.Join(argv, " "))
+	completed := 0
+	var runErr error
+	for _, argv := range argvs {
+		fmt.Fprintf(os.Stdout, "\r\n\x1b[1m$ %s\x1b[0m\r\n\r\n", strings.Join(argv, " "))
 
-	command := exec.Command(argv[0], argv[1:]...)
-	command.Stdin = os.Stdin
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-	runErr := command.Run()
-
-	if runErr != nil {
-		fmt.Fprintf(os.Stdout, "\r\n\x1b[31mcommand failed: %v\x1b[0m\r\n", runErr)
-		if hint := explain(runErr); hint != "" {
-			fmt.Fprintf(os.Stdout, "\x1b[2m%s\x1b[0m\r\n", hint)
+		command := exec.Command(argv[0], argv[1:]...)
+		command.Stdin = os.Stdin
+		command.Stdout = os.Stdout
+		command.Stderr = os.Stderr
+		if runErr = command.Run(); runErr != nil {
+			fmt.Fprintf(os.Stdout, "\r\n\x1b[31mcommand failed: %v\x1b[0m\r\n", runErr)
+			if hint := explain(runErr); hint != "" {
+				fmt.Fprintf(os.Stdout, "\x1b[2m%s\x1b[0m\r\n", hint)
+			}
+			break
 		}
+		completed++
 	}
+
 	if pauseAfter {
 		fmt.Fprint(os.Stdout, "\r\n\x1b[2mPress Enter to return to muelle\x1b[0m")
 		bufio.NewReader(os.Stdin).ReadString('\n')
 	}
-	return runErr
+	return completed, runErr
 }
 
 // Capture runs argv and returns what it wrote, without handing over the
