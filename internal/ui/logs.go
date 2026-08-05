@@ -21,6 +21,7 @@ func (a *App) openLogs(ctx context.Context, container docker.Container) {
 
 	a.mode = ModeLogs
 	a.logTitle = container.Name()
+	a.logName = container.Name()
 	a.logs.Reset()
 	a.logPager = NewPager(true)
 	a.logFilter = ""
@@ -138,6 +139,7 @@ func (a *App) openProjectLogs(ctx context.Context, project compose.Project) {
 	a.closeLogs()
 	a.mode = ModeLogs
 	a.logTitle = project.Name + " (" + Plural(len(running), "service", "services") + ")"
+	a.logName = project.Name
 	a.logs.Reset()
 	a.logPager = NewPager(true)
 	a.logFilter = ""

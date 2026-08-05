@@ -516,6 +516,8 @@ func (a *App) handleLogsKey(ctx context.Context, key tui.Key) bool {
 			filter, _ := value.(string)
 			a.logFilter = strings.TrimSpace(filter)
 		})
+	case key.IsRune('s'):
+		a.openLogSavePrompt()
 	case key.IsRune('c'):
 		a.logs.Reset()
 		a.setStatus("cleared")
