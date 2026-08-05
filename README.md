@@ -106,8 +106,9 @@ Destructive actions always ask first, and a destructive prompt will not accept
 a stray `Enter` — it wants an explicit `y`.
 
 In the log viewer: `f` follow, `w` wrap, `t` timestamps, `F` formatting,
-`/` filter, `c` clear. Scrolling up pauses follow; scrolling back to the
-bottom resumes it.
+`/` filter, `s` save to a file, `c` clear. Scrolling up pauses follow;
+scrolling back to the bottom resumes it. Saving writes exactly what is shown
+— filter and timestamps included — as plain text with no colour codes.
 
 ## Log formatting
 

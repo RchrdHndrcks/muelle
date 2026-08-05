@@ -568,7 +568,7 @@ func (a *App) renderStatusBar(width int) string {
 func (a *App) contextHints() string {
 	switch a.mode {
 	case ModeLogs:
-		return "f follow  w wrap  t timestamps  F format  / filter  esc back  ? help"
+		return "f follow  w wrap  t timestamps  F format  / filter  s save  esc back  ? help"
 	case ModeInspect:
 		return "j/k scroll  g/G top/bottom  esc back"
 	case ModeProcesses:

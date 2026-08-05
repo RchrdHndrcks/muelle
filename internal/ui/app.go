@@ -132,9 +132,13 @@ type App struct {
 	status  status
 
 	// Log viewer state.
-	logs      *LogBuffer
-	logPager  *Pager
-	logTitle  string
+	logs     *LogBuffer
+	logPager *Pager
+	logTitle string
+	// logName is the bare container or project name, for default save
+	// filenames. logTitle carries decoration — "(2 services)" — that has no
+	// business in a path.
+	logName   string
 	logFilter string
 	logWrap   bool
 	logStamps bool

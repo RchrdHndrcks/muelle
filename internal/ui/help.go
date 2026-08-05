@@ -73,6 +73,7 @@ var helpSections = []helpSection{
 		{"t", "toggle timestamps"},
 		{"F", "toggle formatting (structured lines as fields)"},
 		{"/", "filter lines"},
+		{"s", "save the visible lines to a file"},
 		{"c", "clear the buffer"},
 		{"Esc, q", "back to the list"},
 	}},
