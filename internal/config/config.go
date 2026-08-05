@@ -23,9 +23,10 @@ type Config struct {
 	RefreshSeconds int `json:"refresh_seconds"`
 	// LogTail is how many lines of history to load when opening logs.
 	LogTail int `json:"log_tail"`
-	// Stats enables the CPU and memory columns. Each sample holds a daemon
-	// request open for about a second, so it can be turned off on a busy
-	// host or a slow remote socket.
+	// Stats enables the CPU and memory columns, fed by one streaming stats
+	// connection per running container. The daemon serves those cheaply,
+	// but they are still one open connection each, so this can be turned
+	// off on a slow remote socket or a host with very many containers.
 	Stats bool `json:"stats"`
 	// StopTimeout is how many seconds a container is given to exit before
 	// it is killed.

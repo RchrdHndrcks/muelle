@@ -357,9 +357,8 @@ pull once, when it has finished.
 
 ### Where it comes from
 
-This is the one part of muelle that is not polled, because it cannot be: a
-deployment is over in less time than the refresh interval, so polling would
-show the aftermath and never the act. muelle follows the daemon's event stream,
+This part of muelle cannot be polled: a deployment is over in less time than
+the refresh interval, so polling would show the aftermath and never the act. muelle follows the daemon's event stream,
 which reports container lifecycle as it happens and carries Compose's labels on
 every event — so the service each container belonged to is known without
 inspecting anything.
@@ -629,7 +628,7 @@ Written on first run to `$MUELLE_CONFIG` if set, otherwise
 | `compose_dirs` | directories scanned for stopped Compose projects |
 | `refresh_seconds` | polling interval, clamped to 1–60 |
 | `log_tail` | lines of history loaded when opening logs |
-| `stats` | CPU and memory columns; each sample holds a daemon request open for about a second, so turn this off on a busy host or a slow remote socket |
+| `stats` | CPU and memory columns, fed by one streaming stats connection per running container — the daemon pushes a sample a second instead of being asked to gather one per refresh. Turn this off on a slow remote socket or a host with very many containers, where even an idle connection each is too many |
 | `stop_timeout` | seconds a container gets to exit before being killed |
 | `colour` | styled output; `NO_COLOR` in the environment always wins |
 | `sort` | container ordering: `project`, `cpu`, `memory`, `age` or `state`. Updated when you press `o`, so the ordering you chose is the one you come back to |

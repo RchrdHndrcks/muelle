@@ -87,6 +87,15 @@ type App struct {
 	volumes          []docker.Volume
 	networks         []docker.Network
 	stats            map[string]docker.Stat
+	// statStreams holds one persistent stats connection per running
+	// container, reconciled against each refreshed container list. Nil when
+	// the stats columns are switched off. Owned, like everything else here,
+	// by the loop goroutine; the streams themselves only post events.
+	statStreams *docker.StatsStreamer
+	// streamCtx is what every stats stream derives from, so cancelling the
+	// app's run tears them all down. Set once at the top of Run; nil in dump
+	// mode and in tests, where no stream is ever opened.
+	streamCtx context.Context
 	// restartCounts is populated only for containers that look unwell;
 	// see docker.Client.RestartCounts for why it is not fetched for all.
 	restartCounts map[string]int
@@ -187,7 +196,7 @@ const statusLifetime = 6 * time.Second
 
 // New creates an app bound to a daemon and a screen.
 func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *Runner) *App {
-	return &App{
+	app := &App{
 		config:         cfg,
 		docker:         client,
 		screen:         screen,
@@ -214,6 +223,16 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		dockerCLI:      DockerCLIAvailable(),
 		composeBinary:  compose.Detect(),
 	}
+	// The off-switch is the streamer never existing, so nothing downstream
+	// needs to consult the configuration again. Samples come back through
+	// the event channel like every other asynchronous result, keeping the
+	// model single-goroutine.
+	if cfg.Stats {
+		app.statStreams = docker.NewStatsStreamer(client, func(id string, stat docker.Stat) {
+			app.post(statSampled{id: id, stat: stat})
+		})
+	}
+	return app
 }
 
 // parseConfiguredSort reads the stored ordering, falling back to the default
@@ -265,6 +284,16 @@ func (a *App) Run(ctx context.Context, keys <-chan tui.Key, resize <-chan struct
 		a.setError("docker CLI not found on PATH: exec and compose actions are unavailable")
 	case !a.composeBinary.Available():
 		a.setError("%v", ErrComposeMissing)
+	}
+
+	// Streams opened during this run derive from its context, and are torn
+	// down when it ends. The deferred order matters: defers run last-in
+	// first-out, so Stop closes the quit channel first, releasing any stream
+	// goroutine parked in post, and only then does Close wait for them.
+	a.streamCtx = ctx
+	if a.statStreams != nil {
+		defer a.statStreams.Close()
+		defer a.Stop()
 	}
 
 	a.watchEvents(ctx)
