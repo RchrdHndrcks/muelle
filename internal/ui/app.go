@@ -59,6 +59,8 @@ const (
 	ModeHelp
 	// ModeProcesses lists the processes inside a container.
 	ModeProcesses
+	// ModeHistory is the full-screen image layer history viewer.
+	ModeHistory
 )
 
 // App holds all mutable state and the event loop.
@@ -154,6 +156,11 @@ type App struct {
 	processesPager *Pager
 	processesTitle string
 
+	// Image history viewer state.
+	history      []docker.HistoryEntry
+	historyPager *Pager
+	historyTitle string
+
 	events   chan event
 	quit     chan struct{}
 	quitOnce sync.Once
@@ -203,6 +210,7 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		logPager:       NewPager(true),
 		inspectPager:   NewPager(false),
 		processesPager: NewPager(false),
+		historyPager:   NewPager(false),
 		logWrap:        cfg.LogWrap,
 		logStamps:      cfg.LogTimestamps,
 		showSystem:     cfg.SystemPanel,
@@ -391,6 +399,8 @@ func (a *App) frame(width, height int) []string {
 		body = a.renderInspect(width, bodyHeight)
 	case ModeProcesses:
 		body = a.renderProcesses(width, bodyHeight)
+	case ModeHistory:
+		body = a.renderHistory(width, bodyHeight)
 	case ModeHelp:
 		body = a.renderHelp(width, bodyHeight)
 	default:
