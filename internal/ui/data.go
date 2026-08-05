@@ -40,6 +40,9 @@ func (e containersLoaded) apply(a *App) {
 	}
 	a.containers = e.containers
 	a.projects = e.projects
+	// Marks are keyed by ID exactly so they survive this replacement; what
+	// must not survive is a mark whose container has left the list.
+	a.pruneMarks()
 	// Remembered so a row can still be drawn for a service whose container
 	// has been destroyed and not yet replaced.
 	if a.deploys != nil {
@@ -362,6 +365,7 @@ func (a *App) LoadOnce(ctx context.Context) error {
 		}
 	}
 	a.containers = containers
+	a.pruneMarks()
 	a.placeSelection()
 	a.imageUsage = docker.ImageUsage(all)
 	if images, err := a.docker.Images(ctx); err == nil {

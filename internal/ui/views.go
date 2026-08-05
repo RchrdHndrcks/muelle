@@ -152,7 +152,20 @@ func (a *App) containerCells(row Row) []string {
 	// column and the whole thing reads as a flat list with odd rows in it.
 	name := container.Name()
 	if a.grouped {
-		name = "  " + group.Shorten(name, row.Group)
+		name = group.Shorten(name, row.Group)
+	}
+	// The mark is drawn in a two-cell gutter ahead of the name. With
+	// grouping on, the indent under the heading doubles as that gutter, so
+	// it is always there. Flat, the gutter exists only while any mark does:
+	// every row shifts together when marking begins and returns flush left
+	// when it ends, so a marked row is never out of line with its
+	// neighbours — the star appearing in an otherwise still column is what
+	// makes the mark visible at a glance.
+	switch {
+	case a.marked[container.ID]:
+		name = style(styleWarning, "* ") + name
+	case a.grouped || len(a.marked) > 0:
+		name = "  " + name
 	}
 
 	cells := []string{
@@ -578,7 +591,7 @@ func (a *App) contextHints() string {
 	}
 	switch a.view {
 	case ViewContainers:
-		return "enter inspect  l logs  x exec  s start  t stop  r restart  D remove  T top  a all  A group  o sort  P prune  / filter  ? help"
+		return "enter inspect  l logs  x exec  s start  t stop  r restart  D remove  space mark  T top  a all  A group  o sort  P prune  / filter  ? help"
 	case ViewCompose:
 		return "enter actions  l logs  e edit  u up  d down  r restart  / filter  ? help"
 	case ViewImages:
@@ -623,6 +636,12 @@ func (a *App) contextState() string {
 					}
 				}
 			}
+		}
+		// Said whenever any container is marked: the marks may be scrolled
+		// off screen, and the lifecycle keys are about to act on all of
+		// them rather than on the row under the cursor.
+		if a.view == ViewContainers && len(a.marked) > 0 {
+			parts = append(parts, fmt.Sprintf("%d marked", len(a.marked)))
 		}
 		if a.filter != "" {
 			parts = append(parts, "filter:"+a.filter)
