@@ -11,6 +11,7 @@ import (
 	"github.com/RchrdHndrcks/muelle/internal/deploy"
 	"github.com/RchrdHndrcks/muelle/internal/docker"
 	"github.com/RchrdHndrcks/muelle/internal/probe"
+	"github.com/RchrdHndrcks/muelle/internal/registry"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
 )
 
@@ -89,9 +90,19 @@ type App struct {
 	imageUsage map[string]int
 	// unusedImagesOnly narrows the images view to removal candidates.
 	unusedImagesOnly bool
-	volumes          []docker.Volume
-	networks         []docker.Network
-	stats            map[string]docker.Stat
+	// updates remembers, per image reference, whether its registry holds a
+	// newer version of the tag. Keyed by reference rather than image ID so a
+	// list refresh, which replaces the image structs, does not wipe results
+	// that took a round trip per image to earn.
+	updates map[string]registry.Verdict
+	// updateChecker answers those questions; an interface so tests need no
+	// network.
+	updateChecker imageChecker
+	// checkingUpdates keeps a slow sweep from being started twice.
+	checkingUpdates bool
+	volumes         []docker.Volume
+	networks        []docker.Network
+	stats           map[string]docker.Stat
 	// statStreams holds one persistent stats connection per running
 	// container, reconciled against each refreshed container list. Nil when
 	// the stats columns are switched off. Owned, like everything else here,
@@ -245,6 +256,8 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		logStamps:      cfg.LogTimestamps,
 		showSystem:     cfg.SystemPanel,
 		imageUsage:     make(map[string]int),
+		updates:        make(map[string]registry.Verdict),
+		updateChecker:  registry.NewChecker(),
 		logFormat:      cfg.LogFormat,
 		sortKey:        parseConfiguredSort(cfg.Sort),
 		events:         make(chan event, 64),
