@@ -19,6 +19,11 @@ type Config struct {
 	// ComposeDirs are scanned for Compose projects that have no
 	// containers, so stopped stacks remain visible.
 	ComposeDirs []string `json:"compose_dirs"`
+	// BackupDir is where volume backups are written. A leading "~" expands
+	// to the home directory, the same way it does in ComposeDirs, and the
+	// directory is created on first use rather than at startup — most
+	// sessions never take a backup.
+	BackupDir string `json:"backup_dir"`
 	// RefreshSeconds is how often the container list is polled.
 	RefreshSeconds int `json:"refresh_seconds"`
 	// LogTail is how many lines of history to load when opening logs.
@@ -73,6 +78,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		ComposeDirs:     []string{"~/deployments"},
+		BackupDir:       "~/muelle-backups",
 		RefreshSeconds:  3,
 		LogTail:         500,
 		Stats:           true,

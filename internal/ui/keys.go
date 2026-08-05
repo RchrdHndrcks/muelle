@@ -416,6 +416,8 @@ func (a *App) handleImageKey(ctx context.Context, key tui.Key) bool {
 func (a *App) handleVolumeKey(ctx context.Context, key tui.Key) bool {
 	volume, ok := a.selectedVolume()
 	switch {
+	case key.IsRune('b') && ok:
+		a.backupVolume(volume)
 	case key.IsRune('D') && ok:
 		a.confirm("Remove volume", "Remove "+volume.Name+"? Its data will be lost.", func() {
 			a.runAction(ctx, "removed "+volume.Name, func(c context.Context) error {

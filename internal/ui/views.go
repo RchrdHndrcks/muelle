@@ -584,7 +584,7 @@ func (a *App) contextHints() string {
 	case ViewImages:
 		return "D remove  P prune  u unused only  / filter  ? help"
 	case ViewVolumes:
-		return "D remove  P prune  / filter  ? help"
+		return "b backup  D remove  P prune  / filter  ? help"
 	case ViewNetworks:
 		return "D remove  P prune  / filter  ? help"
 	}

@@ -288,6 +288,31 @@ func TestLoadReadsTheConfiguredEditor(t *testing.T) {
 	}
 }
 
+// Backups need somewhere to land before anyone has configured anything, and
+// the tilde keeps the default meaningful whatever the home directory is.
+func TestDefaultBackupDirIsUnderHome(t *testing.T) {
+	if got := Default().BackupDir; got != "~/muelle-backups" {
+		t.Errorf("got %q, want ~/muelle-backups", got)
+	}
+}
+
+// A file written before the setting existed must keep the default rather than
+// falling to an empty string, which is what a zero value would do.
+func TestOlderFileKeepsTheBackupDirDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"sort":"memory"}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.BackupDir != Default().BackupDir {
+		t.Errorf("got %q, want the default kept", got.BackupDir)
+	}
+}
+
 // Probing is on by default. It costs one inspect per container, once, and
 // nothing at all for the containers that never set the variable — which is
 // almost all of them.

@@ -97,6 +97,7 @@ Press `?` in the app for the full reference.
 | `A` | group the list by application |
 | `z` | fold an application away (also `Enter` on a heading) |
 | `P` | prune (images and volumes views) |
+| `b` | back up a volume to a tarball (volumes view) |
 | `S` | toggle the host metrics panel |
 | `Ctrl-r` | refresh now |
 | `q`, `Ctrl-c` | quit |
@@ -446,6 +447,33 @@ held become collectable in the same pass. A failing step is recorded and the
 rest still run: a prune that stops halfway would leave you unsure what state
 the host is in.
 
+## Backing up a volume
+
+`b` on a volume archives its contents to a timestamped tarball under
+`backup_dir` (default `~/muelle-backups`), after a confirmation naming the
+exact file it will write. The work is done by a short-lived `alpine` container
+with the volume mounted read-only — a volume's files are not directly
+reachable from the host, and a backup should not be able to alter what it is
+preserving:
+
+```sh
+docker run --rm -v shop-db-data:/data:ro -v ~/muelle-backups:/backup \
+  alpine tar czf /backup/shop-db-data-20260805-090405.tgz -C /data .
+```
+
+Restoring is the same command inverted: the volume mounted writable this time,
+and the archive unpacked into it —
+
+```sh
+docker run --rm -v shop-db-data:/data -v ~/muelle-backups:/backup \
+  alpine tar xzf /backup/shop-db-data-20260805-090405.tgz -C /data
+```
+
+There is no restore key, deliberately. Restoring overwrites live data, usually
+with the service stopped first, and that sequence belongs in a command you
+type on purpose rather than behind a keystroke. Like exec, backup needs the
+`docker` CLI on `PATH`.
+
 ## The exec menu
 
 This is the feature the tool exists for. Press `x` on a container and muelle
@@ -615,6 +643,7 @@ Written on first run to `$MUELLE_CONFIG` if set, otherwise
 {
   "docker_host": "",
   "compose_dirs": ["~/deployments"],
+  "backup_dir": "~/muelle-backups",
   "refresh_seconds": 3,
   "log_tail": 500,
   "stats": true,
@@ -627,6 +656,7 @@ Written on first run to `$MUELLE_CONFIG` if set, otherwise
 |---|---|
 | `docker_host` | daemon endpoint; empty means autodetect |
 | `compose_dirs` | directories scanned for stopped Compose projects |
+| `backup_dir` | where `b` on a volume writes its tarball; `~` expands to your home directory, and the directory is created when first needed |
 | `refresh_seconds` | polling interval, clamped to 1–60 |
 | `log_tail` | lines of history loaded when opening logs |
 | `stats` | CPU and memory columns; each sample holds a daemon request open for about a second, so turn this off on a busy host or a slow remote socket |
