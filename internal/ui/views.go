@@ -77,7 +77,24 @@ func (a *App) renderList(width, height int) []string {
 // containerColumns is the container list layout. Name flexes because it is
 // what identifies the row; ports and image are the first to be dropped when
 // the terminal is narrow.
-func (a *App) containerColumns() []Column {
+func (a *App) containerColumns(width int) []Column {
+	columns := a.baseContainerColumns()
+	if !a.sparklineShown(width) {
+		return columns
+	}
+	// Room to spare: the CPU column grows to carry the sparkline beside the
+	// number — the current reading in its usual seven cells, a gap, and one
+	// cell per drawn sample.
+	for i := range columns {
+		if columns[i].Title == "cpu" {
+			columns[i].Width += 1 + sparkCells
+		}
+	}
+	return columns
+}
+
+// baseContainerColumns is the layout before any width-dependent extras.
+func (a *App) baseContainerColumns() []Column {
 	columns := []Column{
 		{Title: "name", Width: 22, Flex: true},
 		{Title: "state", Width: 13},
@@ -104,6 +121,25 @@ func (a *App) containerColumns() []Column {
 	)
 }
 
+// sparklineShown reports whether the terminal has room for the CPU history.
+//
+// The sparkline is an enrichment, never a displacement: it appears only when
+// every column already fits at its preferred width with the sparkline's cells
+// still left over. On anything narrower the CPU cell is the number alone —
+// exactly the rendering the column had before the sparkline existed — so the
+// history costs no other column anything.
+func (a *App) sparklineShown(width int) bool {
+	if !a.config.Stats {
+		return false
+	}
+	columns := a.baseContainerColumns()
+	required := (len(columns) - 1) * columnGap
+	for _, column := range columns {
+		required += column.Width
+	}
+	return width >= required+1+sparkCells
+}
+
 func (a *App) renderContainers(width, height int) []string {
 	style := a.screen.Style
 	rows := a.rows()
@@ -112,8 +148,9 @@ func (a *App) renderContainers(width, height int) []string {
 		return a.emptyState(width, height, "No containers."+a.showAllHint())
 	}
 
-	columns := a.containerColumns()
+	columns := a.containerColumns(width)
 	widths := LayoutColumns(columns, width)
+	spark := a.sparklineShown(width)
 
 	lines := []string{style(styleColumn, RenderHeader(columns, widths))}
 	rowsAvailable := height - 1
@@ -127,7 +164,7 @@ func (a *App) renderContainers(width, height int) []string {
 		if rows[i].Header != nil {
 			cells = a.headerCells(*rows[i].Header)
 		} else {
-			cells = a.containerCells(rows[i])
+			cells = a.containerCells(rows[i], spark)
 		}
 
 		row := RenderRow(cells, widths)
@@ -139,8 +176,9 @@ func (a *App) renderContainers(width, height int) []string {
 	return lines
 }
 
-// containerCells renders one container as the columns of the list.
-func (a *App) containerCells(row Row) []string {
+// containerCells renders one container as the columns of the list. spark says
+// whether the CPU column has room for its sparkline.
+func (a *App) containerCells(row Row, spark bool) []string {
 	style := a.screen.Style
 	container := row.Container
 	stat, hasStat := a.stats[container.ID]
@@ -174,7 +212,7 @@ func (a *App) containerCells(row Row) []string {
 	}
 	if a.config.Stats {
 		cells = append(cells,
-			style(usageStyle(stat.CPUPercent), FormatPercent(stat.CPUPercent, hasStat)),
+			a.cpuCell(container.ID, stat.CPUPercent, hasStat, spark),
 			statCell(style, stat.MemUsage, stat.MemPercent, hasStat),
 		)
 	}
@@ -270,6 +308,26 @@ func (a *App) stateCell(container docker.Container) string {
 		cell += style(styleWarning, text)
 	}
 	return cell
+}
+
+// cpuCell renders the CPU column: the current reading and, when the terminal
+// has room, a sparkline of the recent ones beside it.
+//
+// The number keeps its usual position and the sparkline trails it, padded into
+// place, so the figures still line up down the column whether a container has
+// thirty samples of history or none. The sparkline is muted because it is
+// context: the current reading is the figure the column exists for.
+func (a *App) cpuCell(id string, percent float64, known, spark bool) string {
+	style := a.screen.Style
+	number := style(usageStyle(percent), FormatPercent(percent, known))
+	if !spark {
+		return number
+	}
+	line := Sparkline(a.cpuHistory[id].last(sparkCells))
+	if line == "" {
+		return number
+	}
+	return tui.Pad(number, 7) + " " + style(styleMuted, line)
 }
 
 // statCell renders memory usage with its percentage colouring.

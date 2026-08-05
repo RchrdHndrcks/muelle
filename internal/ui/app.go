@@ -98,6 +98,11 @@ type App struct {
 	// app's run tears them all down. Set once at the top of Run; nil in dump
 	// mode and in tests, where no stream is ever opened.
 	streamCtx context.Context
+	// cpuHistory remembers each container's recent CPU readings, which the
+	// stats map — holding only the latest sample per container — cannot. It
+	// feeds the sparkline in the CPU column; see sparkline.go for why a row
+	// wants one.
+	cpuHistory map[string]*history
 	// restartCounts is populated only for containers that look unwell;
 	// see docker.Client.RestartCounts for why it is not fetched for all.
 	restartCounts map[string]int
@@ -216,6 +221,7 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		screen:         screen,
 		runner:         runner,
 		stats:          make(map[string]docker.Stat),
+		cpuHistory:     make(map[string]*history),
 		restartCounts:  make(map[string]int),
 		probes:         newProbeWatcher(cfg),
 		probeResults:   make(map[string]probe.Result),

@@ -206,7 +206,7 @@ func TestAgeAndUptimeColumnsFitTheirWidestValue(t *testing.T) {
 		}
 	}
 
-	for _, column := range app.containerColumns() {
+	for _, column := range app.containerColumns(120) {
 		if column.Title != "age" && column.Title != "uptime" {
 			continue
 		}

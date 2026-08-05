@@ -35,6 +35,7 @@ var helpSections = []helpSection{
 	}},
 	{"Containers", []helpEntry{
 		{"state column", "✓ healthy  ✗ unhealthy  … starting  ×N restarts"},
+		{"cpu column", "recent history as a sparkline, on a wide terminal"},
 		{"MUELLE_HEALTH", "set on a container, muelle probes that endpoint itself"},
 		{"deploy status", "creating / recreating / starting, with how long it has been"},
 		{"Enter, i", "inspect (full JSON)"},

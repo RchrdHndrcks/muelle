@@ -694,7 +694,7 @@ Written on first run to `$MUELLE_CONFIG` if set, otherwise
 | `backup_dir` | where `b` on a volume writes its tarball; `~` expands to your home directory, and the directory is created when first needed |
 | `refresh_seconds` | polling interval, clamped to 1–60 |
 | `log_tail` | lines of history loaded when opening logs |
-| `stats` | CPU and memory columns, fed by one streaming stats connection per running container — the daemon pushes a sample a second instead of being asked to gather one per refresh. Turn this off on a slow remote socket or a host with very many containers, where even an idle connection each is too many |
+| `stats` | CPU and memory columns, plus a sparkline of recent CPU readings when the terminal is wide enough, fed by one streaming stats connection per running container — the daemon pushes a sample a second instead of being asked to gather one per refresh. Turn this off on a slow remote socket or a host with very many containers, where even an idle connection each is too many |
 | `stop_timeout` | seconds a container gets to exit before being killed |
 | `colour` | styled output; `NO_COLOR` in the environment always wins |
 | `sort` | container ordering: `project`, `cpu`, `memory`, `age` or `state`. Updated when you press `o`, so the ordering you chose is the one you come back to |
