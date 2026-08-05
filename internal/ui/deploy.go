@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"time"
 
 	"github.com/RchrdHndrcks/muelle/internal/deploy"
@@ -23,12 +22,13 @@ const deployGrace = 15 * time.Second
 // failed deploy does not leave the row lying about it.
 const deployPatience = time.Minute
 
-// deployObserved carries one event from the daemon's stream.
+// deployObserved carries one event from the daemon's stream to the tracker.
 //
 // Folded in on the goroutine that owns the model, like every other
 // asynchronous result, rather than mutating the tracker from the stream. The
 // tracker is safe either way; doing it here is what makes the event redraw the
-// frame it changed.
+// frame it changed. Delivery comes through eventObserved in events.go, which
+// fans the single stream out to the tracker and the events view.
 type deployObserved struct{ event docker.Event }
 
 func (e deployObserved) apply(a *App) {
@@ -36,27 +36,6 @@ func (e deployObserved) apply(a *App) {
 		return
 	}
 	a.deploys.Observe(e.event, time.Now())
-}
-
-// watchEvents follows the daemon's event stream for the life of the app.
-//
-// This cannot be polled: a deployment is over in less time than the refresh
-// interval, so a poll would show the aftermath and never the act.
-func (a *App) watchEvents(ctx context.Context) {
-	stream, err := a.docker.Events(ctx)
-	if err != nil {
-		// Not fatal, and not worth an error banner: everything else still
-		// works, the list just goes back to being as current as the last
-		// poll. An old daemon or a proxy that will not stream is the
-		// usual cause.
-		return
-	}
-	go func() {
-		defer stream.Close()
-		for event := range stream.Events() {
-			a.post(deployObserved{event: event})
-		}
-	}()
 }
 
 // deployPhase reports what is happening to a container's service, if anything.
