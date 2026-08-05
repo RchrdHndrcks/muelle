@@ -181,6 +181,13 @@ func (a *App) handleListKey(ctx context.Context, key tui.Key) bool {
 			return true
 		}
 
+	case key.IsRune('y'):
+		// Yank works in every list view, so it is routed here rather than
+		// repeated in each view's handler. With nothing under the cursor
+		// there is nothing to copy and the key is quietly consumed.
+		a.yankSelection()
+		return true
+
 	case key.IsRune('/'):
 		a.openFilterPrompt()
 		return true
@@ -372,6 +379,9 @@ func (a *App) handleContainerKey(ctx context.Context, key tui.Key) bool {
 
 	case key.IsRune('P'):
 		a.openSystemPruneMenu(ctx)
+
+	case key.IsRune('Y'):
+		a.openYankMenu(container)
 
 	default:
 		return false

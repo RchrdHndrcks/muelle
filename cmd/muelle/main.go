@@ -225,6 +225,11 @@ func interactive(ctx context.Context, cfg config.Config, configPath string, clie
 
 	width, height := tui.SizeOrDefault(tui.StdoutFd)
 	screen := tui.NewScreen(os.Stdout, width, height, colourEnabled(cfg))
+	// Only here, where a terminal is known to be reading the output, may
+	// yank emit OSC 52 clipboard sequences. The dump mode writes to a pipe
+	// and never enables this, so it reports an error instead of sending
+	// escape sequences to whatever is parsing the frame.
+	screen.EnableClipboard()
 	if err := screen.Enter(); err != nil {
 		return err
 	}

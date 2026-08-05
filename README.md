@@ -99,6 +99,8 @@ Press `?` in the app for the full reference.
 | `z` | fold an application away (also `Enter` on a heading) |
 | `P` | prune (images and volumes views) |
 | `b` | back up a volume to a tarball (volumes view) |
+| `y` | copy the identifier — container ID, image tag, volume / network / project name |
+| `Y` | containers: choose what to copy — full ID, name, image, published port |
 | `S` | toggle the host metrics panel |
 | `Ctrl-r` | refresh now |
 | `q`, `Ctrl-c` | quit |
@@ -111,6 +113,13 @@ once: kill and remove still confirm, stating the count ("Remove 4 containers?
 This cannot be undone."), and one status line reports the aggregate outcome.
 Marks follow the container, not its row, so they survive a refresh. `Esc`
 clears the marks first and the filter second.
+
+Copying uses OSC 52: the escape sequence travels down the SSH connection and
+your own terminal performs the copy, so the text lands on your **local**
+clipboard even when muelle runs on a server. The terminal must support it —
+iTerm2, kitty, WezTerm and Windows Terminal do. Inside tmux, add
+`set -g set-clipboard on` to your `~/.tmux.conf` so tmux passes the sequence
+through.
 
 In the log viewer: `f` follow, `w` wrap, `t` timestamps, `F` formatting,
 `/` filter, `s` save to a file, `c` clear. Scrolling up pauses follow;
