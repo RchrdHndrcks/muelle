@@ -66,6 +66,7 @@ var helpSections = []helpSection{
 		{"d", "down (asks first)"},
 		{"r", "restart (does not apply config changes)"},
 		{"l", "follow logs for every service at once"},
+		{"W", "toggle auto deploy (applied by muelle -deploy, never the TUI)"},
 	}},
 	{"Images, volumes, networks", []helpEntry{
 		{"Enter, i", "images: layer history (why is it that big?)"},

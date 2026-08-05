@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RchrdHndrcks/muelle/internal/autodeploy"
 	"github.com/RchrdHndrcks/muelle/internal/compose"
 	"github.com/RchrdHndrcks/muelle/internal/config"
 	"github.com/RchrdHndrcks/muelle/internal/deploy"
@@ -120,6 +121,14 @@ type App struct {
 	// daemonEvents is the timeline behind the events view, fed by the same
 	// stream the deploy tracker follows.
 	daemonEvents *EventRing
+	// deployState is the auto-deploy daemon's last word, re-read from its
+	// state file on the refresh tick. The TUI only ever reads it: exactly
+	// one process — the headless daemon — deploys automatically, and this
+	// view is how you watch it without being able to race it.
+	deployState autodeploy.State
+	// deployStatePath is where that file lives, or "" when unknown (no
+	// config path), which turns the whole feature's display off.
+	deployStatePath string
 
 	// Per-view selection and scroll, kept separately so switching tabs
 	// returns you to where you were.

@@ -357,6 +357,8 @@ func (a *App) renderCompose(width, height int) []string {
 		{Title: "status", Width: 9},
 		{Title: "services", Width: 9},
 		{Title: "running", Width: 8},
+		// Wide enough for its worst case, "auto fail 364d".
+		{Title: "auto", Width: 14},
 		{Title: "directory", Width: 34},
 	}
 	widths := LayoutColumns(columns, width)
@@ -366,6 +368,7 @@ func (a *App) renderCompose(width, height int) []string {
 	start, end, offset := visibleWindow(len(projects), height-1, selected, a.offset[ViewCompose])
 	a.offset[ViewCompose] = offset
 
+	now := time.Now()
 	for i := start; i < end; i++ {
 		project := projects[i]
 		cells := []string{
@@ -373,6 +376,7 @@ func (a *App) renderCompose(width, height int) []string {
 			style(projectStatusStyle(project.Status()), project.Status()),
 			fmt.Sprintf("%d", len(project.Services())),
 			fmt.Sprintf("%d/%d", project.Running(), len(project.Containers)),
+			a.autoDeployCell(project, now),
 			style(styleMuted, project.WorkingDir),
 		}
 		row := RenderRow(cells, widths)

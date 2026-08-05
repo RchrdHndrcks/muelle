@@ -71,6 +71,7 @@ muelle -view compose        # start on the compose view
 muelle -all                 # include stopped containers
 muelle -host tcp://host:2375
 muelle -dump                # render one frame to stdout and exit
+muelle -deploy              # headless auto-deploy daemon, no TUI
 ```
 
 ### Keys
@@ -96,6 +97,7 @@ Press `?` in the app for the full reference.
 | `Space` | mark for a bulk action; on a group heading, the whole group |
 | `a` | include stopped containers |
 | `A` | group the list by application |
+| `W` | toggle automatic deployment for a Compose project |
 | `z` | fold an application away (also `Enter` on a heading) |
 | `P` | prune (images and volumes views) |
 | `b` | back up a volume to a tarball (volumes view) |
@@ -706,6 +708,103 @@ design: where the hashes cannot be had — a Compose too old for `--hash`, say �
 `u` runs directly, exactly as it would have without the preview, because a
 courtesy that can block the action is an obstacle.
 
+## Automatic deployments
+
+When the images behind a Compose project move in their registry, muelle can
+pull and apply them unattended — the "log in and run `pull` and `up` by hand"
+loop, automated for the single-host case where there is no fleet, no rollout
+order, and no approval step to coordinate.
+
+```sh
+muelle -deploy
+```
+
+runs the daemon in the foreground: no TUI, one plain log line per check or
+deploy, a clean exit on `SIGINT`/`SIGTERM`. It refuses to start when no
+Compose binary is installed, and a project whose files it cannot find is
+skipped with a logged reason rather than silently dropped.
+
+### Exactly one deployer
+
+The TUI **never deploys automatically**. It enrols projects (`W` in the
+Compose view) and shows what the daemon did, but only the `muelle -deploy`
+process acts — so run exactly one, and two things can never race each other
+over the same project. The AUTO column in the Compose view is the daemon's
+report card, re-read from its state file on every refresh:
+
+```
+PROJECT   STATUS    SERVICES  RUNNING  AUTO           DIRECTORY
+shop      running   3         3/3      auto ok 12m    /srv/shop
+blog      running   2         2/2      auto fail 3m   /srv/blog
+mail      running   2         2/2                     /srv/mail
+```
+
+### How detection works
+
+Each cycle, per enrolled project:
+
+1. `compose pull -q`, captured. Pulling is delegated to Compose because
+   Compose already knows which services name which images and how to
+   authenticate; muelle does not talk to registries.
+2. For every running container, ask the Docker daemon what the container's
+   image *tag* resolves to now, and compare it with the image ID the
+   container was created from. A difference means the tag has moved. A
+   service with no running container is stale by definition.
+3. Only when something diverged: `compose up -d`, which recreates exactly
+   the services whose image or configuration changed. Nothing diverged means
+   nothing runs.
+4. With `prune` enabled and only after a deploy, dangling images are pruned
+   — that is the moment the superseded image became dangling. It is off by
+   default because the previous image is also the fastest rollback.
+
+A failed pull is recorded and **nothing is applied on top of it**: deploying
+images in an unknown state is how a registry outage becomes an outage of your
+own.
+
+### Configuration
+
+```json
+{
+  "auto_deploy": {
+    "projects": ["shop", "blog"],
+    "interval_minutes": 15,
+    "prune": false
+  }
+}
+```
+
+`projects` is edited for you by `W` in the Compose view. `interval_minutes`
+is clamped to 1–1440. The daemon reads the file at startup, so enrolments
+made while it runs take effect on its next restart.
+
+### The state file
+
+Outcomes land in `deploy-state.json` next to `config.json`: the last check
+time and, per project, the last outcome — when, which services changed, what
+was done, and any error. The daemon writes it after every cycle; the TUI only
+reads it, tolerantly — a missing or half-written file shows as no report, not
+an error.
+
+### Running under systemd
+
+```ini
+[Unit]
+Description=muelle automatic deployments
+After=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/muelle -deploy
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`Type=simple` because the daemon stays in the foreground and logs to stdout,
+which is exactly what journald wants. Output is unstyled, so `NO_COLOR` has
+nothing to do.
+
 ## Configuration
 
 Written on first run to `$MUELLE_CONFIG` if set, otherwise
@@ -741,6 +840,7 @@ Written on first run to `$MUELLE_CONFIG` if set, otherwise
 | `log_format` | structured lines rendered as their parts. Updated when you press `F` |
 | `editor` | editor for `e` on a Compose project. Empty leaves the choice to `$VISUAL` and `$EDITOR`, where you have already made it. May carry flags, as in `code --wait` |
 | `health_probe` | probe containers that set `MUELLE_HEALTH`. One inspect per container, once each |
+| `auto_deploy` | unattended deployments, applied only by `muelle -deploy`. `projects` (updated when you press `W`), `interval_minutes` (clamped to 1–1440, default 15) and `prune` (default false). See [Automatic deployments](#automatic-deployments) |
 
 The daemon is found by trying, in order: `DOCKER_HOST`; the well-known socket
 paths (`/var/run/docker.sock`, Docker Desktop, Colima, rootless); and finally

@@ -73,6 +73,66 @@ type Config struct {
 	// inspect per container — once each, since a container's environment
 	// cannot change without it being recreated under a new ID.
 	HealthProbe bool `json:"health_probe"`
+	// AutoDeploy configures unattended deployments, applied only by the
+	// headless daemon (muelle -deploy). The TUI reads and edits this but
+	// never deploys from it, so exactly one process ever acts on it.
+	AutoDeploy AutoDeploy `json:"auto_deploy"`
+}
+
+// AutoDeploy names the Compose projects the headless daemon keeps current and
+// how often it checks. It lives in the shared configuration file because the
+// TUI is where projects are enrolled (the W key) while the daemon is what acts
+// on the enrolment; a single file is what keeps the two views of "which
+// projects" from drifting apart.
+type AutoDeploy struct {
+	// Projects are the Compose project names to deploy automatically.
+	// Empty means the daemon has nothing to do.
+	Projects []string `json:"projects"`
+	// IntervalMinutes is how often the daemon checks for newer images,
+	// clamped to 1–1440. Pulls are cheap when nothing changed — the
+	// registry answers "already up to date" — but they are still network
+	// round trips, so the floor is a minute, not a second.
+	IntervalMinutes int `json:"interval_minutes"`
+	// Prune removes dangling images after a deploy. Off by default: it is
+	// the one part of the cycle that deletes something, and deleting the
+	// previous image also deletes the fastest way to roll back to it.
+	Prune bool `json:"prune"`
+}
+
+// Interval returns the check period as a duration, clamped to a sane range so
+// a hand-edited file can neither hammer a registry nor look permanently idle.
+func (a AutoDeploy) Interval() time.Duration {
+	minutes := min(max(a.IntervalMinutes, 1), 1440)
+	return time.Duration(minutes) * time.Minute
+}
+
+// Enabled reports whether a project is enrolled for automatic deployment.
+func (a AutoDeploy) Enabled(name string) bool {
+	for _, project := range a.Projects {
+		if project == name {
+			return true
+		}
+	}
+	return false
+}
+
+// SetEnabled enrols or withdraws a project. It sets rather than toggles so the
+// caller's intent survives being replayed against a config file someone edited
+// meanwhile: "enable shop" means enabled, whatever the file said.
+func (a *AutoDeploy) SetEnabled(name string, on bool) {
+	if on {
+		if !a.Enabled(name) {
+			a.Projects = append(a.Projects, name)
+		}
+		return
+	}
+	kept := a.Projects[:0]
+	for _, project := range a.Projects {
+		if project != name {
+			kept = append(kept, project)
+		}
+	}
+	a.Projects = kept
 }
 
 // Default returns the configuration used when no file exists.
@@ -91,6 +151,7 @@ func Default() Config {
 		LogFormat:       true,
 		HealthProbe:     true,
 		GroupContainers: true,
+		AutoDeploy:      AutoDeploy{IntervalMinutes: 15},
 	}
 }
 

@@ -174,6 +174,32 @@ func TestActionsOfferRecreateOnlyForARunningProject(t *testing.T) {
 	}
 }
 
+// RunCaptured must return both streams: Compose spreads its diagnostics over
+// stdout and stderr, and only their interleaving tells the story.
+func TestRunCapturedCombinesBothStreams(t *testing.T) {
+	output, err := RunCaptured(t.Context(), []string{"sh", "-c", "echo out; echo err >&2"})
+	if err != nil {
+		t.Fatalf("RunCaptured: %v", err)
+	}
+	for _, want := range []string{"out", "err"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("got %q, want %q captured", output, want)
+		}
+	}
+}
+
+// A failing command must still surrender its output, because the output is
+// the reason it failed.
+func TestRunCapturedReturnsOutputWithTheError(t *testing.T) {
+	output, err := RunCaptured(t.Context(), []string{"sh", "-c", "echo doomed; exit 3"})
+	if err == nil {
+		t.Fatal("expected the exit status as an error")
+	}
+	if !strings.Contains(output, "doomed") {
+		t.Errorf("got %q, want the output kept alongside the error", output)
+	}
+}
+
 func stubProbes(plugin, standalone bool) (restore func()) {
 	oldPlugin, oldStandalone := pluginInstalled, standaloneInstalled
 	pluginInstalled = func() bool { return plugin }
