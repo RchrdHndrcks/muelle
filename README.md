@@ -99,6 +99,7 @@ Press `?` in the app for the full reference.
 | `z` | fold an application away (also `Enter` on a heading) |
 | `P` | prune (images and volumes views) |
 | `b` | back up a volume to a tarball (volumes view) |
+| `c` | check images for newer versions upstream (images view) |
 | `S` | toggle the host metrics panel |
 | `Ctrl-r` | refresh now |
 | `q`, `Ctrl-c` | quit |
@@ -576,6 +577,40 @@ The `/bin/sh -c #(nop)` wrapper the classic builder stamps on metadata-only
 steps is stripped, the way `docker history` strips it, and zero-size layers
 are dimmed — in a view about where the bytes went, an `ENV` line should not
 compete with a 400MiB `RUN`.
+
+## Newer image upstream
+
+A tag is a moving pointer: the `redis:7-alpine` on Docker Hub drifts away
+from the `redis:7-alpine` pulled three months ago, and nothing on the host
+says so. `c` in the images view asks each image's registry whether its tag
+still points at what was pulled:
+
+```
+REPOSITORY:TAG            ID             SIZE      USAGE   CREATED
+↑ redis:7-alpine          5442b24f3786   41.4MiB   1 used  92d
+mysql:8.0                 79c65f43ee28   1.1GiB    2 used  31d
+                                          updates: 1 of 12, 3 unknown
+```
+
+The check is a manifest `HEAD` per image — the digest the registry reports
+for the tag, compared against the digest the daemon recorded when the image
+was pulled (`RepoDigests`). Nothing is downloaded. It runs on a key rather
+than on the refresh cycle because it is the one fetch in muelle that leaves
+the host, and Docker Hub rate-limits exactly this kind of polling. Results
+are kept until the next check, so the `↑` markers survive list refreshes.
+
+"Unknown" is an honest answer, not a failure: a locally built image has no
+pulled digest to compare, a dangling image has no tag to resolve, and a
+registry can be unreachable. None of those is ever shown as an update,
+because a marker that guesses would send you pulling for nothing.
+
+Private registries work through the standard token flow (a 401 names the
+token endpoint; Docker Hub and ghcr.io both answer it, anonymously for
+public images) and through plain `auths` entries in `~/.docker/config.json`
+where you have run `docker login`. Credential helpers (`credsStore`,
+`credHelpers`) keep no secret in the file to read, so those registries are
+checked anonymously — public images still work; private ones report
+unknown. Registries are only ever spoken to over HTTPS.
 
 ## Compose
 
