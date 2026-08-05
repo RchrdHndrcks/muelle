@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RchrdHndrcks/muelle/internal/autodeploy"
 	"github.com/RchrdHndrcks/muelle/internal/compose"
 	"github.com/RchrdHndrcks/muelle/internal/config"
 	"github.com/RchrdHndrcks/muelle/internal/deploy"
@@ -109,6 +110,14 @@ type App struct {
 	// deploys follows services through being replaced, so a row can say
 	// what is happening to it rather than vanishing.
 	deploys *deploy.Tracker
+	// deployState is the auto-deploy daemon's last word, re-read from its
+	// state file on the refresh tick. The TUI only ever reads it: exactly
+	// one process — the headless daemon — deploys automatically, and this
+	// view is how you watch it without being able to race it.
+	deployState autodeploy.State
+	// deployStatePath is where that file lives, or "" when unknown (no
+	// config path), which turns the whole feature's display off.
+	deployStatePath string
 
 	// Per-view selection and scroll, kept separately so switching tabs
 	// returns you to where you were.

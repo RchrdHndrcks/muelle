@@ -28,6 +28,38 @@ func TestImageListReportsNoUsageOfItsOwn(t *testing.T) {
 	}
 }
 
+// ImageID must pass the reference through as the daemon expects it — tags
+// carry slashes and colons, and both are legal in a URL path.
+func TestImageIDResolvesAReference(t *testing.T) {
+	client, requested := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"Id":"sha256:abc123","RepoTags":["shop/api:1.4"]}`))
+	})
+
+	id, err := client.ImageID(context.Background(), "shop/api:1.4")
+	if err != nil {
+		t.Fatalf("ImageID: %v", err)
+	}
+	if id != "sha256:abc123" {
+		t.Errorf("got %q, want the daemon's ID", id)
+	}
+	if want := "/images/shop/api:1.4/json"; requested.First() != want {
+		t.Errorf("requested %q, want %q", requested.First(), want)
+	}
+}
+
+// A reference the daemon does not know is an ordinary error, carrying the
+// daemon's own message.
+func TestImageIDReportsAnUnknownReference(t *testing.T) {
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"message":"No such image: ghost:latest"}`))
+	})
+
+	if _, err := client.ImageID(context.Background(), "ghost:latest"); err == nil {
+		t.Fatal("expected an error for an unknown image")
+	}
+}
+
 // An image referenced by a stopped container still cannot be removed, so
 // stopped containers must count.
 func TestImageUsageCountsStoppedContainersToo(t *testing.T) {

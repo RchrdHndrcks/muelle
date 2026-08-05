@@ -321,3 +321,80 @@ func TestHealthProbeIsOnByDefault(t *testing.T) {
 		t.Error("health probing should be available without configuring anything")
 	}
 }
+
+// The auto-deploy defaults must describe a daemon that does nothing until a
+// project is enrolled: no projects, a sane interval, no pruning.
+func TestAutoDeployDefaults(t *testing.T) {
+	auto := Default().AutoDeploy
+	if len(auto.Projects) != 0 {
+		t.Errorf("got projects %v, want none enrolled by default", auto.Projects)
+	}
+	if auto.IntervalMinutes != 15 {
+		t.Errorf("got interval %d, want 15", auto.IntervalMinutes)
+	}
+	if auto.Prune {
+		t.Error("pruning deletes the rollback path, so it must be opt-in")
+	}
+}
+
+func TestLoadReadsTheAutoDeployBlock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	raw := `{"auto_deploy": {"projects": ["shop", "blog"], "interval_minutes": 30, "prune": true}}`
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auto := loaded.AutoDeploy
+	if !auto.Enabled("shop") || !auto.Enabled("blog") || auto.Enabled("other") {
+		t.Errorf("got projects %v, want shop and blog enabled", auto.Projects)
+	}
+	if auto.IntervalMinutes != 30 || !auto.Prune {
+		t.Errorf("got %+v, want the file's interval and prune", auto)
+	}
+}
+
+// A hand-edited interval must be clamped rather than obeyed: zero would spin
+// against the registry, and anything past a day means the daemon looks dead.
+func TestAutoDeployIntervalIsClamped(t *testing.T) {
+	cases := map[int]time.Duration{
+		0:     time.Minute,
+		-5:    time.Minute,
+		1:     time.Minute,
+		15:    15 * time.Minute,
+		1440:  1440 * time.Minute,
+		99999: 1440 * time.Minute,
+	}
+	for minutes, want := range cases {
+		auto := AutoDeploy{IntervalMinutes: minutes}
+		if got := auto.Interval(); got != want {
+			t.Errorf("interval_minutes %d: got %v, want %v", minutes, got, want)
+		}
+	}
+}
+
+// SetEnabled sets rather than toggles, so replaying the change against a
+// config file someone edited meanwhile still lands on the intended state.
+func TestAutoDeploySetEnabled(t *testing.T) {
+	var auto AutoDeploy
+
+	auto.SetEnabled("shop", true)
+	auto.SetEnabled("shop", true) // enrolling twice must not duplicate
+	if len(auto.Projects) != 1 || !auto.Enabled("shop") {
+		t.Errorf("got %v, want shop enrolled once", auto.Projects)
+	}
+
+	auto.SetEnabled("blog", true)
+	auto.SetEnabled("shop", false)
+	if auto.Enabled("shop") || !auto.Enabled("blog") {
+		t.Errorf("got %v, want only blog left", auto.Projects)
+	}
+
+	auto.SetEnabled("absent", false) // withdrawing a stranger is a no-op
+	if len(auto.Projects) != 1 {
+		t.Errorf("got %v, want blog untouched", auto.Projects)
+	}
+}

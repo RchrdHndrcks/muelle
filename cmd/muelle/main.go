@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/RchrdHndrcks/muelle/internal/autodeploy"
+	"github.com/RchrdHndrcks/muelle/internal/compose"
 	"github.com/RchrdHndrcks/muelle/internal/config"
 	"github.com/RchrdHndrcks/muelle/internal/docker"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
@@ -82,6 +84,7 @@ func run() error {
 		hostFlag    = flag.String("host", "", "docker daemon endpoint (default: $DOCKER_HOST, then autodetect)")
 		viewFlag    = flag.String("view", "containers", "initial view: containers, compose, images, volumes or networks")
 		dumpFlag    = flag.Bool("dump", false, "render a single frame to stdout and exit, for use without a terminal")
+		deployFlag  = flag.Bool("deploy", false, "run the auto-deploy daemon in the foreground: no TUI, one log line per check")
 		allFlag     = flag.Bool("all", false, "include stopped containers")
 		versionFlag = flag.Bool("version", false, "print the version and exit")
 	)
@@ -117,15 +120,56 @@ func run() error {
 			"Config: %s", client.Host(), err, configPath)
 	}
 
+	if *deployFlag {
+		return autoDeployDaemon(ctx, cfg, configPath, client)
+	}
+
 	view, err := parseView(*viewFlag)
 	if err != nil {
 		return err
 	}
 
 	if *dumpFlag {
-		return dump(ctx, cfg, client, view, *allFlag)
+		return dump(ctx, cfg, configPath, client, view, *allFlag)
 	}
 	return interactive(ctx, cfg, configPath, client, view, *allFlag)
+}
+
+// autoDeployDaemon runs the unattended deploy loop in the foreground until
+// SIGINT or SIGTERM, which arrive here as context cancellation.
+//
+// This is the one process allowed to deploy automatically. The TUI enrols
+// projects and shows outcomes but never acts on them, so running exactly one
+// "muelle -deploy" — typically under systemd — is what keeps two deployers
+// from racing each other.
+func autoDeployDaemon(ctx context.Context, cfg config.Config, configPath string, client *docker.Client) error {
+	binary := compose.Detect()
+	if !binary.Available() {
+		// Without Compose nothing can be pulled or applied, and a daemon
+		// that would fail every cycle should say so once and exit instead.
+		return fmt.Errorf("auto-deploy needs Compose: install the docker compose plugin or docker-compose")
+	}
+	if len(cfg.AutoDeploy.Projects) == 0 {
+		// Not fatal: exiting non-zero under Restart=on-failure would make
+		// systemd burst-restart a daemon whose only problem is an empty
+		// list. It stays up, says why it is idle, and keeps checking in
+		// case that ever reads differently — but the list is loaded once,
+		// so enrolments need a restart to take effect.
+		fmt.Println("auto-deploy: no projects enrolled; press W on a project in the compose view, then restart this daemon")
+	}
+
+	deployer := &autodeploy.Deployer{
+		Settings:    cfg.AutoDeploy,
+		ComposeDirs: cfg.ComposeDirs,
+		Binary:      binary,
+		Docker:      client,
+		Run:         compose.RunCaptured,
+		StatePath:   autodeploy.StatePathFor(configPath),
+		// Plain lines on stdout, no styling at all — which is also the
+		// whole of honouring NO_COLOR here.
+		Log: os.Stdout,
+	}
+	return deployer.Loop(ctx)
 }
 
 // usage prints help text with more context than flag's default.
@@ -183,7 +227,7 @@ func colourEnabled(cfg config.Config) bool {
 // plenty of useful contexts do not have one: CI, a script, an agent driving
 // the tool. It shares the model and render path with the real app, so what it
 // prints is what the TUI would show.
-func dump(ctx context.Context, cfg config.Config, client *docker.Client, view ui.View, all bool) error {
+func dump(ctx context.Context, cfg config.Config, configPath string, client *docker.Client, view ui.View, all bool) error {
 	const dumpWidth, dumpHeight = 120, 40
 
 	width, height := dumpWidth, dumpHeight
@@ -196,6 +240,7 @@ func dump(ctx context.Context, cfg config.Config, client *docker.Client, view ui
 	app.SetShowAll(all)
 	app.SetView(view)
 	app.SetBuild(shortBuildVersion())
+	app.SetDeployStatePath(autodeploy.StatePathFor(configPath))
 
 	if err := app.LoadOnce(ctx); err != nil {
 		return err
@@ -272,6 +317,7 @@ func interactive(ctx context.Context, cfg config.Config, configPath string, clie
 	app.SetView(view)
 	app.SetBuild(shortBuildVersion())
 	app.SetPreferenceWriter(preferenceWriter(configPath))
+	app.SetDeployStatePath(autodeploy.StatePathFor(configPath))
 
 	resize := watchResize(ctx)
 
