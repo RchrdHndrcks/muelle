@@ -50,6 +50,9 @@ func (e containersLoaded) apply(a *App) {
 	if e.imageUsage != nil {
 		a.imageUsage = e.imageUsage
 	}
+	// The stats streams follow the list: a container that started gets a
+	// stream, one that stopped loses both its stream and its last sample.
+	a.syncStatStreams()
 	// A failed refresh leaves the previous data on screen; a successful one
 	// clears the error that reported it.
 	if a.status.isError && strings.HasPrefix(a.status.text, "refresh failed") {
@@ -99,25 +102,89 @@ func (e networksLoaded) apply(a *App) {
 	a.networks = e.networks
 }
 
-// statsLoaded carries a round of resource samples.
+// statsLoaded carries a full round of resource samples, from the one-shot
+// path dump mode uses; the live app receives statSampled events instead.
 type statsLoaded struct{ stats map[string]docker.Stat }
 
 func (e statsLoaded) apply(a *App) {
 	a.stats = e.stats
+	a.recomputeStatTotals()
+}
 
-	// Aggregate for the host panel. Docker publishes no host-level
-	// utilisation, so the sum across containers is the closest honest
-	// figure, and the panel labels it as such.
+// statSampled carries one decoded sample from a container's stats stream.
+//
+// Samples arrive one container at a time rather than as a round, so this
+// updates a single entry — and drops a sample whose container is no longer
+// listed as running, which happens when one was already decoded while its
+// stream was being torn down.
+type statSampled struct {
+	id   string
+	stat docker.Stat
+}
+
+func (e statSampled) apply(a *App) {
+	for _, c := range a.containers {
+		if c.ID != e.id {
+			continue
+		}
+		if !c.Running() {
+			return
+		}
+		a.stats[e.id] = e.stat
+		a.recomputeStatTotals()
+		return
+	}
+}
+
+// recomputeStatTotals refreshes the host panel's aggregate figures. Docker
+// publishes no host-level utilisation, so the sum across containers is the
+// closest honest figure, and the panel labels it as such.
+func (a *App) recomputeStatTotals() {
 	var (
 		cpu float64
 		mem uint64
 	)
-	for _, stat := range e.stats {
+	for _, stat := range a.stats {
 		cpu += stat.CPUPercent
 		mem += stat.MemUsage
 	}
 	a.metrics.CPUPercent = cpu
 	a.metrics.MemBytes = mem
+}
+
+// syncStatStreams reconciles the stats streams with the containers now
+// running, and drops the samples of those that no longer are. Driven by the
+// refreshed container list rather than by a timer of its own, so which
+// streams are open can never disagree with what is on screen.
+func (a *App) syncStatStreams() {
+	if a.statStreams == nil {
+		return
+	}
+	running := make(map[string]bool, len(a.containers))
+	ids := make([]string, 0, len(a.containers))
+	for _, c := range a.containers {
+		if c.Running() {
+			running[c.ID] = true
+			ids = append(ids, c.ID)
+		}
+	}
+	changed := false
+	for id := range a.stats {
+		if !running[id] {
+			delete(a.stats, id)
+			changed = true
+		}
+	}
+	if changed {
+		a.recomputeStatTotals()
+	}
+	// Without a run there is nothing to tie a stream's life to: dump mode
+	// and unit tests apply container lists with no event loop behind them,
+	// and must not leak connections that nothing will ever close.
+	if a.streamCtx == nil {
+		return
+	}
+	a.statStreams.Sync(a.streamCtx, ids)
 }
 
 // hostInfoLoaded carries a refresh of the daemon's host information.
@@ -233,7 +300,6 @@ func (a *App) refresh(ctx context.Context) {
 
 	showAll := a.showAll
 	composeDirs := a.config.ComposeDirs
-	wantStats := a.config.Stats && a.view == ViewContainers
 
 	go func() {
 		fetchCtx, cancel := context.WithTimeout(ctx, refreshTimeout)
@@ -277,20 +343,13 @@ func (a *App) refresh(ctx context.Context) {
 
 		// Probing runs against the containers themselves rather than the
 		// daemon, so it neither waits for nor delays anything above.
+		//
+		// Stats need no fetch here at all: each running container has a
+		// persistent stream posting samples as the daemon produces them,
+		// and the loop reconciles those streams when the container list
+		// above is applied.
 		if a.probes != nil {
 			a.post(probesSwept{results: a.probes.Sweep(fetchCtx, a.docker, containers)})
-		}
-
-		if wantStats {
-			var running []string
-			for _, c := range containers {
-				if c.Running() {
-					running = append(running, c.ID)
-				}
-			}
-			if len(running) > 0 {
-				a.post(statsLoaded{stats: a.docker.StatsFor(fetchCtx, running)})
-			}
 		}
 	}()
 
@@ -379,6 +438,9 @@ func (a *App) LoadOnce(ctx context.Context) error {
 	if a.probes != nil {
 		probesSwept{results: a.probes.Sweep(ctx, a.docker, containers)}.apply(a)
 	}
+	// Stats are sampled one-shot here rather than streamed: a program that
+	// renders a single frame and exits has no later moment for a stream's
+	// samples to arrive in.
 	if a.config.Stats {
 		var running []string
 		for _, c := range containers {

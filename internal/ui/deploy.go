@@ -40,9 +40,8 @@ func (e deployObserved) apply(a *App) {
 
 // watchEvents follows the daemon's event stream for the life of the app.
 //
-// This is the only part of muelle that is not polled. It has to be: a
-// deployment is over in less time than the refresh interval, so a poll would
-// show the aftermath and never the act.
+// This cannot be polled: a deployment is over in less time than the refresh
+// interval, so a poll would show the aftermath and never the act.
 func (a *App) watchEvents(ctx context.Context) {
 	stream, err := a.docker.Events(ctx)
 	if err != nil {

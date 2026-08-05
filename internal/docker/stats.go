@@ -115,11 +115,15 @@ func (s StatSample) cpuCount() uint32 {
 
 // Stats fetches a single resource-usage sample for one container.
 //
-// This uses stream=false rather than one-shot=true deliberately: one-shot
+// This is the one-shot path, kept for dump mode: a program that renders one
+// frame and exits cannot sit on a stream waiting for samples to accumulate.
+// The live app streams instead — see StatsStreamer.
+//
+// It uses stream=false rather than one-shot=true deliberately: one-shot
 // omits the "precpu" block, leaving no baseline to compute a CPU delta
 // against, so every reading would be 0%. The trade-off is that the daemon
 // holds the request open for about a second while it gathers the second
-// sample, which is why callers run this off the UI goroutine.
+// sample, which a single frame can afford.
 func (c *Client) Stats(ctx context.Context, id string) (Stat, error) {
 	query := url.Values{"stream": {"false"}}
 	body, err := c.do(ctx, http.MethodGet, "/containers/"+id+"/stats", query, nil)
@@ -143,6 +147,8 @@ const statsConcurrency = 8
 // StatsFor samples several containers concurrently, returning what succeeded.
 // Containers whose stats could not be read are simply absent from the result:
 // a container that exits mid-sample is normal, not an error worth surfacing.
+// Like Stats, this serves the one-shot dump path; the live app keeps a stream
+// per container instead.
 func (c *Client) StatsFor(ctx context.Context, ids []string) map[string]Stat {
 	results := make(map[string]Stat, len(ids))
 	var (
