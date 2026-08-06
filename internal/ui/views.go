@@ -70,6 +70,8 @@ func (a *App) renderList(width, height int) []string {
 		return a.renderVolumes(width, height)
 	case ViewNetworks:
 		return a.renderNetworks(width, height)
+	case ViewEvents:
+		return a.renderEvents(width, height)
 	}
 	return nil
 }
@@ -602,6 +604,8 @@ func (a *App) contextHints() string {
 		return "b backup  D remove  P prune  / filter  ? help"
 	case ViewNetworks:
 		return "D remove  P prune  / filter  ? help"
+	case ViewEvents:
+		return "j/k move  / filter  ? help"
 	}
 	return "? help"
 }

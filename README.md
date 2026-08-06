@@ -79,7 +79,7 @@ Press `?` in the app for the full reference.
 
 | Key | Action |
 |---|---|
-| `1` `2` `3` `4` `5`, `Tab`, `←` `→` | containers, compose, images, volumes, networks |
+| `1` `2` `3` `4` `5` `6`, `Tab`, `←` `→` | containers, compose, images, volumes, networks, events |
 | `j` `k`, `↓` `↑` | move selection |
 | `g` `G` | first / last |
 | `Ctrl-d` `Ctrl-u` | half page down / up |
@@ -390,6 +390,29 @@ moment that otherwise makes a deployment invisible.
 
 This is live only. `muelle -dump` renders a single frame and exits, and a
 deployment is a thing that happens over time.
+
+## Events
+
+`6` is a timeline of daemon activity, newest first — the view that answers
+"what restarted, died or was OOM-killed, and when?":
+
+```
+TIME      TYPE       ACTION                 NAME
+14:02:09  container  start                  shop-api
+14:02:07  container  die                    shop-api
+14:02:07  container  oom                    shop-api
+13:58:41  image      pull                   shop/api:1.5
+```
+
+It is fed by the same event stream that follows deployments — one connection,
+fanned out to both — and covers containers, images, volumes and networks. The
+stream is opened an hour into the past, which the daemon serves from its own
+event log, so the view has history at launch: muelle is usually opened *after*
+the thing worth investigating has happened. Roughly the last five hundred
+events are kept; older ones fall off the end.
+
+`/` filters by type, action or name. The rows are records rather than
+objects, so there is nothing to Enter into yet.
 
 ## Age and uptime
 

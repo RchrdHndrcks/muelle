@@ -100,6 +100,8 @@ func (a *App) handleGlobalKey(ctx context.Context, key tui.Key) {
 		a.switchView(ViewVolumes)
 	case key.IsRune('5'):
 		a.switchView(ViewNetworks)
+	case key.IsRune('6'):
+		a.switchView(ViewEvents)
 	}
 }
 

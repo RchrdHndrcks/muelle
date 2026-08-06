@@ -17,7 +17,7 @@ func TestEventsYieldsEachLineAsItArrives(t *testing.T) {
 		`{"Type":"container","Action":"start","Actor":{"ID":"def","Attributes":{"name":"shop-api"}},"timeNano":2}`,
 	)
 
-	stream, err := client.Events(context.Background())
+	stream, err := client.Events(context.Background(), time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestEventsCarriesTheComposeLabels(t *testing.T) {
 		`"Attributes":{"name":"shop-api-1","com.docker.compose.project":"shop",`+
 		`"com.docker.compose.service":"api"}},"timeNano":1}`)
 
-	stream, err := client.Events(context.Background())
+	stream, err := client.Events(context.Background(), time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestEventsReadsHealthStatus(t *testing.T) {
 		`{"Type":"container","Action":"health_status: unhealthy","Actor":{"ID":"abc"},"timeNano":2}`,
 	)
 
-	stream, err := client.Events(context.Background())
+	stream, err := client.Events(context.Background(), time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestEventsReadsHealthStatus(t *testing.T) {
 func TestEventsReportsNoHealthForOtherActions(t *testing.T) {
 	client, _ := eventServer(t, `{"Type":"container","Action":"start","Actor":{"ID":"abc"},"timeNano":1}`)
 
-	stream, err := client.Events(context.Background())
+	stream, err := client.Events(context.Background(), time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,20 +99,55 @@ func TestEventsReportsNoHealthForOtherActions(t *testing.T) {
 	}
 }
 
-// The daemon emits events for images, volumes and networks too. Asking it to
-// filter is one flag and saves decoding everything that happens on a busy host.
-func TestEventsAsksTheDaemonForContainersOnly(t *testing.T) {
+// The daemon reports far more than muelle shows — exec starts and plugin
+// installs among it. Asking it to filter is one flag and saves decoding
+// everything that happens on a busy host.
+func TestEventsAsksTheDaemonForTheTypesMuelleShows(t *testing.T) {
 	client, requested := eventServer(t, `{"Type":"container","Action":"start","Actor":{"ID":"a"},"timeNano":1}`)
 
-	stream, err := client.Events(context.Background())
+	stream, err := client.Events(context.Background(), time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stream.Close()
 	next(t, stream)
 
-	if filters := (<-requested).Get("filters"); filters != `{"type":["container"]}` {
-		t.Errorf("got filters %q, want containers only", filters)
+	if filters := (<-requested).Get("filters"); filters != `{"type":["container","image","volume","network"]}` {
+		t.Errorf("got filters %q, want containers, images, volumes and networks", filters)
+	}
+}
+
+// A non-zero since asks the daemon to replay history from that moment, so a
+// freshly opened stream is not blind to everything before it.
+func TestEventsRequestsBackfillWithSince(t *testing.T) {
+	client, requested := eventServer(t, `{"Type":"container","Action":"start","Actor":{"ID":"a"},"timeNano":1}`)
+
+	stream, err := client.Events(context.Background(), time.Unix(1700000000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	next(t, stream)
+
+	if since := (<-requested).Get("since"); since != "1700000000" {
+		t.Errorf("got since %q, want the unix timestamp", since)
+	}
+}
+
+// A zero since means live only; sending "0" would ask the daemon to replay its
+// whole event log.
+func TestEventsOmitsSinceWhenZero(t *testing.T) {
+	client, requested := eventServer(t, `{"Type":"container","Action":"start","Actor":{"ID":"a"},"timeNano":1}`)
+
+	stream, err := client.Events(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	next(t, stream)
+
+	if query := <-requested; query.Has("since") {
+		t.Errorf("got since %q, want no since parameter at all", query.Get("since"))
 	}
 }
 
@@ -122,7 +157,7 @@ func TestEventsStopsWhenTheContextIsCancelled(t *testing.T) {
 	client, _ := eventServer(t, `{"Type":"container","Action":"start","Actor":{"ID":"a"},"timeNano":1}`)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	stream, err := client.Events(ctx)
+	stream, err := client.Events(ctx, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
