@@ -391,6 +391,8 @@ func (a *App) handleComposeKey(ctx context.Context, key tui.Key) bool {
 		a.openComposeMenu(project)
 	case key.IsRune('u'):
 		a.previewUp(project)
+	case key.IsRune('U'):
+		a.confirmUpdate(project)
 	case key.IsRune('d'):
 		a.confirm("Compose down", "Stop and remove everything in "+project.Name+"?", func() {
 			a.runCompose(project, compose.ActionDown)
@@ -675,18 +677,37 @@ func (a *App) execInContainer(container docker.Container, command []string) {
 	a.setStatus("exec session ended")
 }
 
+// updateChoice marks the menu entry for updating a stack. The other entries
+// carry a compose.Action, but update cannot be one: the Action enum maps
+// one-to-one onto Compose subcommands, and update is a sequence of them.
+type updateChoice struct{}
+
 // openComposeMenu offers the actions available for a project.
 func (a *App) openComposeMenu(project compose.Project) {
 	actions := compose.Actions(project)
-	items := make([]MenuItem, 0, len(actions))
+	items := make([]MenuItem, 0, len(actions)+1)
 	for _, action := range actions {
 		items = append(items, MenuItem{
 			Label:  action.Label(),
 			Detail: strings.Join(a.composeBinary.Command(project, action), " "),
 			Value:  action,
 		})
+		if action == compose.ActionUp {
+			// Beside up, which is the single-step version of it. The
+			// detail names the steps rather than an argv, because no
+			// one command is what this entry runs.
+			items = append(items, MenuItem{
+				Label:  "update (pull new images and apply)",
+				Detail: "pull, up -d, then prune dangling images",
+				Value:  updateChoice{},
+			})
+		}
 	}
 	a.overlay = NewMenu("Compose: "+project.Name, items, func(value any) {
+		if _, ok := value.(updateChoice); ok {
+			a.confirmUpdate(project)
+			return
+		}
 		action, ok := value.(compose.Action)
 		if !ok {
 			return
@@ -701,19 +722,28 @@ func (a *App) openComposeMenu(project compose.Project) {
 	})
 }
 
-// runCompose suspends the TUI and runs a Compose command, leaving its output
-// on screen until the user acknowledges it.
-func (a *App) runCompose(project compose.Project, action compose.Action, services ...string) {
+// composeReady reports whether Compose actions can run against a project,
+// saying why not when they cannot.
+func (a *App) composeReady(project compose.Project) bool {
 	if a.runner == nil {
 		a.setError("compose actions are unavailable in this mode")
-		return
+		return false
 	}
 	if !a.composeBinary.Available() {
 		a.setError("%v", ErrComposeMissing)
-		return
+		return false
 	}
 	if len(project.ConfigFiles) == 0 && project.WorkingDir == "" {
 		a.setError("no compose file known for %s", project.Name)
+		return false
+	}
+	return true
+}
+
+// runCompose suspends the TUI and runs a Compose command, leaving its output
+// on screen until the user acknowledges it.
+func (a *App) runCompose(project compose.Project, action compose.Action, services ...string) {
+	if !a.composeReady(project) {
 		return
 	}
 
@@ -726,6 +756,73 @@ func (a *App) runCompose(project compose.Project, action compose.Action, service
 	} else {
 		a.setStatus("compose %s finished for %s", action, project.Name)
 	}
+	a.refreshing = false
+	a.refresh(context.Background())
+}
+
+// confirmUpdate asks before updating a stack, naming the three steps.
+//
+// Not marked destructive: nothing here loses data — recreated containers are
+// what up -d always does, and a dangling image can be pulled again — so Enter
+// may confirm, the same as running u and then a prune by hand.
+func (a *App) confirmUpdate(project compose.Project) {
+	a.overlay = NewConfirm("Update "+project.Name,
+		"Pull images, apply changes, and prune dangling images for "+project.Name+"?",
+		false, func(any) { a.updateStack(project) })
+}
+
+// updateStack brings a project up to date in one step: pull its images, apply
+// whatever changed with up -d, and prune the dangling images the pull left
+// behind.
+//
+// The chaining lives here rather than in the compose package, whose Action
+// enum maps one-to-one onto subcommands: this layer already owns the runner
+// and the daemon client the steps need, and an Action pretending to be one
+// subcommand would push a sequence into argv building where it cannot fit.
+// Both Compose commands run in a single terminal handover, so their output
+// reads as one deployment. A failed pull stops everything — "apply changes"
+// after images that never arrived would recreate containers onto whatever
+// happened to be cached, which is not the update that was asked for.
+func (a *App) updateStack(project compose.Project) {
+	if !a.composeReady(project) {
+		return
+	}
+
+	steps := [][]string{
+		a.composeBinary.Command(project, compose.ActionPull),
+		a.composeBinary.Command(project, compose.ActionUp),
+	}
+	completed, err := a.runner.RunSequence(steps, true)
+	if err != nil {
+		failed := compose.ActionPull
+		if completed > 0 {
+			failed = compose.ActionUp
+		}
+		a.setError("compose %s: %v", failed, err)
+		a.refreshing = false
+		a.refresh(context.Background())
+		return
+	}
+
+	// Pruning goes through the API rather than a third child process: it
+	// produces no output worth watching, and the reclaimed figure belongs in
+	// the status line the user is returning to.
+	a.setStatus("updated %s, pruning dangling images", project.Name)
+	go func() {
+		result, pruneErr := a.docker.PruneImages(context.Background())
+		if pruneErr != nil {
+			// The update itself succeeded, and the message must not
+			// suggest otherwise.
+			a.post(actionDone{err: fmt.Errorf(
+				"updated %s, but pruning dangling images failed: %v", project.Name, pruneErr)})
+			return
+		}
+		a.post(actionDone{message: fmt.Sprintf("updated %s: pruned %s, %s reclaimed",
+			project.Name,
+			Plural(result.Deleted, "dangling image", "dangling images"),
+			FormatBytes(uint64(result.SpaceReclaimed)))})
+		a.post(refreshRequested{})
+	}()
 	a.refreshing = false
 	a.refresh(context.Background())
 }

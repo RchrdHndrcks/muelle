@@ -584,10 +584,16 @@ projects appear with no configuration. Stopped projects have no containers to
 read labels from, so directories listed in `compose_dirs` are also scanned one
 level deep for a compose file.
 
-Press `Enter` on a project for the action menu (`up -d`, `recreate`, `down`,
-`restart`, `pull`, `build`, `ps`, `logs`), or `u` / `d` / `r` directly. `l`
-follows every service in the project at once, with each line labelled by
+Press `Enter` on a project for the action menu (`up -d`, `update`, `recreate`,
+`down`, `restart`, `pull`, `build`, `ps`, `logs`), or `u` / `d` / `r` directly.
+`l` follows every service in the project at once, with each line labelled by
 service. `e` edits the project's configuration; see below.
+
+`U` updates a stack in one key: after a confirmation it runs `pull`, then
+`up -d`, and finally prunes dangling images — the ones the pull just replaced —
+reporting the space reclaimed in the status line. Both Compose commands run
+with their output on screen, the way every Compose action does, and a failed
+pull stops the sequence before anything is recreated.
 
 Actions shell out to Compose with the project identified explicitly
 (`-f <file> --project-directory <dir> -p <name>`), so they behave the same

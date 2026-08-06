@@ -59,6 +59,7 @@ var helpSections = []helpSection{
 		{"Enter", "action menu for the project"},
 		{"e", "edit the compose file or .env, then apply it"},
 		{"u", "up -d, after showing what it would recreate"},
+		{"U", "update: pull, up -d, then prune dangling images"},
 		{"d", "down (asks first)"},
 		{"r", "restart (does not apply config changes)"},
 		{"l", "follow logs for every service at once"},

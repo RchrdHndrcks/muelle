@@ -3,9 +3,16 @@ package ui
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/RchrdHndrcks/muelle/internal/compose"
 	"github.com/RchrdHndrcks/muelle/internal/config"
+	"github.com/RchrdHndrcks/muelle/internal/docker"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
 )
 
@@ -405,5 +412,216 @@ func TestStoredLogViewSettingsApplyAtStartup(t *testing.T) {
 	if !app.logStamps || app.logWrap || app.logFormat {
 		t.Errorf("got stamps %v wrap %v format %v, want the stored settings applied",
 			app.logStamps, app.logWrap, app.logFormat)
+	}
+}
+
+// U recreates containers and removes images, so it must not start from a
+// slipped keystroke: the first thing it does is ask.
+func TestUpdateKeyAsksForConfirmation(t *testing.T) {
+	app := loadedApp(t)
+	press(app, runeKey('2'))
+
+	press(app, runeKey('U'))
+
+	if app.overlay == nil || app.overlay.Kind != OverlayConfirm {
+		t.Fatal("U should open a confirmation overlay")
+	}
+	want := "Pull images, apply changes, and prune dangling images for shop?"
+	if app.overlay.Prompt != want {
+		t.Errorf("got prompt %q, want %q", app.overlay.Prompt, want)
+	}
+	if app.overlay.Danger {
+		t.Error("updating loses no data, so Enter should be allowed to confirm")
+	}
+}
+
+// Declining must leave everything alone.
+func TestUpdateDeclinedDoesNothing(t *testing.T) {
+	app := loadedApp(t)
+	press(app, runeKey('2'))
+	press(app, runeKey('U'))
+
+	press(app, runeKey('n'))
+
+	if app.overlay != nil {
+		t.Error("declining should close the overlay")
+	}
+	if app.status.isError {
+		t.Errorf("got error %q, want none", app.status.text)
+	}
+}
+
+// Update goes through the same guard as every other Compose action, so a
+// machine without Compose hears about the missing install rather than an
+// exec failure.
+func TestUpdateRefusedWhenComposeIsMissing(t *testing.T) {
+	app := loadedApp(t)
+	app.runner = &Runner{}
+	app.dockerCLI = true
+	app.composeBinary = nil
+	press(app, runeKey('2'))
+	press(app, runeKey('U'))
+
+	press(app, runeKey('y'))
+
+	if !app.status.isError {
+		t.Fatalf("got status %q, want an error", app.status.text)
+	}
+	if !strings.Contains(app.status.text, "docker-compose") {
+		t.Errorf("got %q, want it to name both forms of Compose", app.status.text)
+	}
+}
+
+// A failed pull stops the sequence: recreating containers onto whatever
+// happened to be cached is not the update that was asked for, and the error
+// has to say which step refused.
+func TestUpdateStopsWhenPullFails(t *testing.T) {
+	app := loadedApp(t)
+	app.runner = &Runner{}
+	// "false" ignores its arguments and exits 1, standing in for a Compose
+	// whose pull fails.
+	app.composeBinary = compose.Binary{"false"}
+
+	app.updateStack(compose.Project{Name: "shop", WorkingDir: "/srv/shop"})
+
+	if !app.status.isError {
+		t.Fatalf("got status %q, want an error", app.status.text)
+	}
+	if !strings.Contains(app.status.text, "compose pull") {
+		t.Errorf("got %q, want the failing step named", app.status.text)
+	}
+}
+
+// After a successful pull and up, the dangling images the pull replaced are
+// pruned through the API, and the status line reports what that reclaimed.
+func TestUpdatePrunesAndReportsReclaimedSpace(t *testing.T) {
+	app := loadedApp(t)
+	app.runner = &Runner{}
+	// "true" ignores its arguments and exits 0, standing in for a Compose
+	// whose pull and up both succeed.
+	app.composeBinary = compose.Binary{"true"}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/images/prune" {
+			json.NewEncoder(w).Encode(map[string]any{
+				"ImagesDeleted":  []map[string]any{{"Deleted": "sha256:aaa"}, {"Deleted": "sha256:bbb"}},
+				"SpaceReclaimed": 268435456,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+	client, err := docker.New(server.URL)
+	if err != nil {
+		t.Fatalf("docker.New: %v", err)
+	}
+	app.docker = client
+
+	app.updateStack(compose.Project{Name: "shop", WorkingDir: "/srv/shop"})
+
+	done := awaitActionDone(t, app)
+	if done.err != nil {
+		t.Fatalf("got error %v, want a prune report", done.err)
+	}
+	want := "updated shop: pruned 2 dangling images, 256MiB reclaimed"
+	if done.message != want {
+		t.Errorf("got %q, want %q", done.message, want)
+	}
+}
+
+// A prune failing after a successful update must not make the update look
+// failed: the containers are running the new images either way.
+func TestUpdateReportsPruneFailureAsItsOwn(t *testing.T) {
+	app := loadedApp(t)
+	app.runner = &Runner{}
+	app.composeBinary = compose.Binary{"true"}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+	client, err := docker.New(server.URL)
+	if err != nil {
+		t.Fatalf("docker.New: %v", err)
+	}
+	app.docker = client
+
+	app.updateStack(compose.Project{Name: "shop", WorkingDir: "/srv/shop"})
+
+	done := awaitActionDone(t, app)
+	if done.err == nil {
+		t.Fatal("a failed prune must be reported")
+	}
+	if !strings.Contains(done.err.Error(), "updated shop, but pruning") {
+		t.Errorf("got %q, want the update's success stated alongside the prune failure", done.err)
+	}
+}
+
+// awaitActionDone reads events until the update's outcome arrives. The
+// refreshes an update triggers post their own events, so anything else on the
+// channel is skipped rather than mistaken for the result.
+func awaitActionDone(t *testing.T, app *App) actionDone {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case ev := <-app.events:
+			if done, ok := ev.(actionDone); ok {
+				return done
+			}
+		case <-deadline:
+			t.Fatal("no actionDone event arrived")
+		}
+	}
+}
+
+// The Enter menu offers update beside up, whose single-step version it is.
+func TestComposeMenuOffersUpdate(t *testing.T) {
+	app := newTestApp(t)
+	app.composeBinary = compose.Binary{"docker", "compose"}
+
+	app.openComposeMenu(compose.Project{Name: "shop", WorkingDir: "/srv/shop"})
+
+	upIndex, updateIndex := -1, -1
+	for i, item := range app.overlay.Items {
+		switch item.Value {
+		case compose.ActionUp:
+			upIndex = i
+		case updateChoice{}:
+			updateIndex = i
+		}
+	}
+	if updateIndex == -1 {
+		t.Fatal("the menu should offer update")
+	}
+	if updateIndex != upIndex+1 {
+		t.Errorf("update sits at %d, want it directly after up at %d", updateIndex, upIndex)
+	}
+}
+
+// Choosing update from the menu raises the same confirmation the U key does,
+// so the two routes cannot drift apart.
+func TestComposeMenuUpdateRaisesConfirmation(t *testing.T) {
+	app := loadedApp(t)
+	press(app, runeKey('2'))
+	press(app, tui.Key{Type: tui.KeyEnter})
+	if app.overlay == nil || app.overlay.Kind != OverlayMenu {
+		t.Fatal("Enter should open the compose menu")
+	}
+
+	for i, item := range app.overlay.Items {
+		if item.Value == (updateChoice{}) {
+			app.overlay.Selected = i
+			break
+		}
+	}
+	press(app, tui.Key{Type: tui.KeyEnter})
+
+	if app.overlay == nil || app.overlay.Kind != OverlayConfirm {
+		t.Fatal("choosing update should raise a confirmation")
+	}
+	if !strings.Contains(app.overlay.Prompt, "prune dangling images for shop") {
+		t.Errorf("got prompt %q, want the update confirmation", app.overlay.Prompt)
 	}
 }
