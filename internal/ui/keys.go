@@ -185,6 +185,16 @@ func (a *App) handleListKey(ctx context.Context, key tui.Key) bool {
 		a.openFilterPrompt()
 		return true
 	case key.Type == tui.KeyEscape:
+		// Marks before the filter — deliberate precedence. Esc peels back
+		// the most recent layer of intent: marks choose what to act on
+		// within an already narrowed list, so they go first, and a second
+		// Esc clears the narrowing itself. The other order would widen the
+		// list while a pending bulk action still points into it.
+		if a.view == ViewContainers && len(a.marked) > 0 {
+			a.clearMarks()
+			a.setStatus("marks cleared")
+			return true
+		}
 		if a.filter != "" {
 			a.filter = ""
 			a.setStatus("filter cleared")
@@ -263,11 +273,24 @@ func (a *App) handleContainerKey(ctx context.Context, key tui.Key) bool {
 	case key.IsRune('z'):
 		a.toggleCollapse()
 		return true
+	case key.IsRune(' '):
+		// Space marks rows for a bulk action, and on a heading it marks
+		// the whole group — so it too must be answered before anything
+		// asks for a selected container.
+		a.toggleMark()
+		return true
 	}
 	if row, ok := a.selectedRow(); ok && row.Header != nil && key.Type == tui.KeyEnter {
 		// Enter is inspect on a container; on a heading there is nothing
 		// to inspect, and folding is what the row is for.
 		a.toggleCollapse()
+		return true
+	}
+
+	// With marks in play the lifecycle keys act on the marked set, wherever
+	// the cursor happens to be — including on a heading, where there is no
+	// selected container to fall back to.
+	if len(a.marked) > 0 && a.handleBulkKey(ctx, key) {
 		return true
 	}
 

@@ -133,6 +133,9 @@ type App struct {
 	measuringDisk  bool
 	// filter narrows the current list by substring.
 	filter string
+	// marked is the containers view's multi-select, keyed by container ID
+	// so a mark survives refresh; see marks.go for the whole story.
+	marked map[string]bool
 	// sortKey orders the container list.
 	sortKey SortKey
 	// persist records a preference that should outlive the session. Nil
@@ -219,6 +222,7 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		deploys:        deploy.New(deployGrace, deployPatience),
 		grouped:        cfg.GroupContainers,
 		collapsed:      collapsedSet(cfg.CollapsedGroups),
+		marked:         make(map[string]bool),
 		logs:           NewLogBuffer(5000),
 		logPager:       NewPager(true),
 		inspectPager:   NewPager(false),

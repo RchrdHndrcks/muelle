@@ -93,6 +93,7 @@ Press `?` in the app for the full reference.
 | `p` | pause or unpause |
 | `K` | kill (SIGKILL) |
 | `D` | remove |
+| `Space` | mark for a bulk action; on a group heading, the whole group |
 | `a` | include stopped containers |
 | `A` | group the list by application |
 | `z` | fold an application away (also `Enter` on a heading) |
@@ -104,6 +105,12 @@ Press `?` in the app for the full reference.
 
 Destructive actions always ask first, and a destructive prompt will not accept
 a stray `Enter` — it wants an explicit `y`.
+
+While any containers are marked, `s`, `t`, `K` and `D` act on all of them at
+once: kill and remove still confirm, stating the count ("Remove 4 containers?
+This cannot be undone."), and one status line reports the aggregate outcome.
+Marks follow the container, not its row, so they survive a refresh. `Esc`
+clears the marks first and the filter second.
 
 In the log viewer: `f` follow, `w` wrap, `t` timestamps, `F` formatting,
 `/` filter, `s` save to a file, `c` clear. Scrolling up pauses follow;
