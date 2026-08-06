@@ -62,6 +62,7 @@ var helpSections = []helpSection{
 		{"l", "follow logs for every service at once"},
 	}},
 	{"Images, volumes, networks", []helpEntry{
+		{"Enter, i", "images: layer history (why is it that big?)"},
 		{"D", "remove the selected item"},
 		{"P", "prune unused items"},
 		{"u", "images: show only those no container uses"},

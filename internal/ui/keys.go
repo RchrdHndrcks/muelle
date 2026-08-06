@@ -46,6 +46,10 @@ func (a *App) handleKey(ctx context.Context, key tui.Key) {
 		if a.handleProcessesKey(key) {
 			return
 		}
+	case ModeHistory:
+		if a.handleHistoryKey(key) {
+			return
+		}
 	case ModeHelp:
 		if key.Type == tui.KeyEscape || key.IsRune('q') || key.IsRune('?') {
 			a.mode = ModeList
@@ -384,6 +388,12 @@ func (a *App) handleComposeKey(ctx context.Context, key tui.Key) bool {
 func (a *App) handleImageKey(ctx context.Context, key tui.Key) bool {
 	image, ok := a.selectedImage()
 	switch {
+	// The same keys that inspect a container, because the question is the
+	// same shape: what is this thing actually made of? For an image the
+	// answer worth a full screen is its layers, not its config JSON.
+	case (key.Type == tui.KeyEnter || key.IsRune('i')) && ok:
+		a.openHistory(ctx, image)
+
 	case key.IsRune('u'):
 		a.unusedImagesOnly = !a.unusedImagesOnly
 		a.selection[ViewImages] = 0

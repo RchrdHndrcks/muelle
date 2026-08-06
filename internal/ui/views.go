@@ -573,6 +573,8 @@ func (a *App) contextHints() string {
 		return "j/k scroll  g/G top/bottom  esc back"
 	case ModeProcesses:
 		return "j/k scroll  g/G top/bottom  esc back"
+	case ModeHistory:
+		return "j/k scroll  g/G top/bottom  esc back"
 	case ModeHelp:
 		return "esc back"
 	}
@@ -582,7 +584,7 @@ func (a *App) contextHints() string {
 	case ViewCompose:
 		return "enter actions  l logs  e edit  u up  d down  r restart  / filter  ? help"
 	case ViewImages:
-		return "D remove  P prune  u unused only  / filter  ? help"
+		return "enter history  D remove  P prune  u unused only  / filter  ? help"
 	case ViewVolumes:
 		return "b backup  D remove  P prune  / filter  ? help"
 	case ViewNetworks:
@@ -611,6 +613,8 @@ func (a *App) contextState() string {
 		parts = append(parts, a.inspectTitle)
 	case ModeProcesses:
 		parts = append(parts, a.processSummary())
+	case ModeHistory:
+		parts = append(parts, a.historyTitle)
 	default:
 		// Explain a non-zero exit for the selected container. 137 and 143
 		// are both "stopped" to the daemon but mean very different things,

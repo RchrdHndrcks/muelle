@@ -44,6 +44,11 @@ func fakeDaemon(t *testing.T) *docker.Client {
 			json.NewEncoder(w).Encode([]map[string]any{
 				{"Id": "sha256:1111111111112222", "RepoTags": []string{"mysql:8.0"}, "Size": 1073741824},
 			})
+		case strings.HasPrefix(r.URL.Path, "/images/") && strings.HasSuffix(r.URL.Path, "/history"):
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"Id": "sha256:top", "Created": 1722000000, "CreatedBy": `/bin/sh -c #(nop)  CMD ["mysqld"]`, "Size": 0},
+				{"Id": "<missing>", "Created": 1721000000, "CreatedBy": "/bin/sh -c apt-get update", "Size": 104857600},
+			})
 		case strings.HasPrefix(r.URL.Path, "/volumes"):
 			json.NewEncoder(w).Encode(map[string]any{
 				"Volumes": []map[string]any{{"Name": "shop-db-data", "Driver": "local"}},

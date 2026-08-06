@@ -84,7 +84,7 @@ Press `?` in the app for the full reference.
 | `g` `G` | first / last |
 | `Ctrl-d` `Ctrl-u` | half page down / up |
 | `/` | filter the list |
-| `Enter`, `i` | inspect (full JSON) |
+| `Enter`, `i` | inspect a container (full JSON), or an image's layer history |
 | `l` | follow logs |
 | `x` | exec menu |
 | `e` | shell immediately (`bash`, falling back to `sh`) |
@@ -550,6 +550,25 @@ and calling it unused would offer a deletion the daemon refuses.
 
 The size shown is the image's total; the reclaimable figure excludes layers
 other images still need, so it is what removing them would actually free.
+
+`Enter` (or `i`) on an image answers the question the SIZE column raises:
+why is it that big? The layer history lists every build step with what it
+added, newest first — so your own Dockerfile's layers, the ones you can do
+something about, sit at the top:
+
+```
+ mysql:8.0  1.0GiB in 25 layers
+ SIZE      CREATED    CREATED BY
+ 0B        8d         CMD ["mysqld"]
+ 411MiB    8d         RUN /bin/bash -c set -eux; ...
+ 0B        8d         ENV MYSQL_VERSION=8.0.40
+ 116MiB    9d         /bin/sh -c apt-get update && apt-get install -y ...
+```
+
+The `/bin/sh -c #(nop)` wrapper the classic builder stamps on metadata-only
+steps is stripped, the way `docker history` strips it, and zero-size layers
+are dimmed — in a view about where the bytes went, an `ENV` line should not
+compete with a 400MiB `RUN`.
 
 ## Compose
 
