@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RchrdHndrcks/muelle/internal/autodeploy"
 	"github.com/RchrdHndrcks/muelle/internal/compose"
 	"github.com/RchrdHndrcks/muelle/internal/docker"
 )
@@ -301,6 +302,11 @@ func (a *App) refresh(ctx context.Context) {
 	}
 	a.refreshing = true
 
+	// The auto-deploy daemon is a separate process; its state file is the
+	// only channel it reports through, so it is re-read on the same tick as
+	// everything else.
+	a.refreshDeployState()
+
 	showAll := a.showAll
 	composeDirs := a.config.ComposeDirs
 
@@ -438,6 +444,9 @@ func (a *App) LoadOnce(ctx context.Context) error {
 	}
 	if version, err := a.docker.Ping(ctx); err == nil {
 		a.version = version
+	}
+	if a.deployStatePath != "" {
+		a.deployState = autodeploy.LoadState(a.deployStatePath)
 	}
 	if a.probes != nil {
 		probesSwept{results: a.probes.Sweep(ctx, a.docker, containers)}.apply(a)

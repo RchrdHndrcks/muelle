@@ -127,6 +127,23 @@ func (c *Client) Images(ctx context.Context) ([]Image, error) {
 	return images, nil
 }
 
+// ImageID resolves an image reference — typically a tag like "shop/api:1.4" —
+// to the ID it currently names.
+//
+// This is what makes "did the pull change anything" answerable: a running
+// container records the ID it was created from, and after a pull the same tag
+// may resolve to a different ID. Comparing the two is exact, where comparing
+// pull output would mean parsing text Compose does not promise to keep stable.
+func (c *Client) ImageID(ctx context.Context, reference string) (string, error) {
+	var payload struct {
+		ID string `json:"Id"`
+	}
+	if err := c.getJSON(ctx, "/images/"+reference+"/json", nil, &payload); err != nil {
+		return "", err
+	}
+	return payload.ID, nil
+}
+
 // RemoveImage deletes an image, optionally forcing removal when containers
 // still reference it.
 func (c *Client) RemoveImage(ctx context.Context, id string, force bool) error {

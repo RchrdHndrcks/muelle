@@ -403,6 +403,10 @@ func (a *App) handleComposeKey(ctx context.Context, key tui.Key) bool {
 		a.openEditMenu(project)
 	case key.IsRune('l'):
 		a.openProjectLogs(ctx, project)
+	case key.IsRune('W'):
+		// Enrolment only: the TUI never deploys. The headless daemon
+		// (muelle -deploy) is the one process that acts on this.
+		a.toggleAutoDeploy(project)
 	default:
 		return false
 	}
