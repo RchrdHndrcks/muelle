@@ -8,6 +8,7 @@ import (
 
 	"github.com/RchrdHndrcks/muelle/internal/docker"
 	"github.com/RchrdHndrcks/muelle/internal/group"
+	"github.com/RchrdHndrcks/muelle/internal/registry"
 	"github.com/RchrdHndrcks/muelle/internal/tui"
 )
 
@@ -352,6 +353,13 @@ func (a *App) renderImages(width, height int) []string {
 		if image.Dangling() {
 			tag = style(styleMuted, tag)
 		}
+		// A marker prefix rather than a column: only checked-and-outdated
+		// rows carry it, so a whole column would sit empty until someone
+		// pressed c — and the indent it creates is what makes the rows
+		// with something to do stand out from the ones without.
+		if a.updates[image.Tag()] == registry.VerdictOutdated {
+			tag = style(styleWarning, "↑ ") + tag
+		}
 		cells := []string{
 			tag,
 			style(styleMuted, image.ShortID()),
@@ -597,7 +605,7 @@ func (a *App) contextHints() string {
 	case ViewCompose:
 		return "enter actions  l logs  e edit  u up  d down  r restart  / filter  ? help"
 	case ViewImages:
-		return "enter history  D remove  P prune  u unused only  / filter  ? help"
+		return "enter history  c check updates  D remove  P prune  u unused only  / filter  ? help"
 	case ViewVolumes:
 		return "b backup  D remove  P prune  / filter  ? help"
 	case ViewNetworks:
@@ -663,6 +671,11 @@ func (a *App) contextState() string {
 			if count, reclaimable := a.unusedImages(); count > 0 {
 				parts = append(parts, fmt.Sprintf("%d unused · %s reclaimable",
 					count, FormatBytes(uint64(reclaimable))))
+			}
+			// The ↑ markers scroll off screen with their rows; the count
+			// here says whether there is anything to scroll to.
+			if count := a.outdatedImages(); count > 0 {
+				parts = append(parts, Plural(count, "update", "updates"))
 			}
 		}
 		if a.showAll {

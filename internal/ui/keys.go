@@ -431,6 +431,9 @@ func (a *App) handleImageKey(ctx context.Context, key tui.Key) bool {
 		}
 		a.setStatus("showing all images")
 
+	case key.IsRune('c'):
+		a.checkImageUpdates(ctx)
+
 	case key.IsRune('D') && ok:
 		a.confirm("Remove image", "Remove "+image.Tag()+"?", func() {
 			a.runAction(ctx, "removed "+image.Tag(), func(c context.Context) error {

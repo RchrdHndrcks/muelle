@@ -69,6 +69,8 @@ var helpSections = []helpSection{
 		{"D", "remove the selected item"},
 		{"P", "prune unused items"},
 		{"u", "images: show only those no container uses"},
+		{"c", "images: ask each registry if the tag has moved on"},
+		{"↑", "marks an image whose registry has a newer version"},
 		{"b", "volumes: back up to a tarball in backup_dir"},
 	}},
 	{"Log viewer", []helpEntry{
