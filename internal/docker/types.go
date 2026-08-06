@@ -15,6 +15,10 @@ const (
 	LabelWorkingDir  = "com.docker.compose.project.working_dir"
 	LabelConfigFiles = "com.docker.compose.project.config_files"
 	LabelContainerNo = "com.docker.compose.container-number"
+	// LabelConfigHash is the hash of the service configuration the container
+	// was created from. Comparing it against what the files hash to now is
+	// how Compose decides — and muelle predicts — what "up" will recreate.
+	LabelConfigHash = "com.docker.compose.config-hash"
 )
 
 // Version is the subset of /version that we display.
@@ -71,6 +75,11 @@ func (c Container) Project() string { return c.Labels[LabelProject] }
 // Service returns the compose service name, or "" when not a compose
 // container.
 func (c Container) Service() string { return c.Labels[LabelService] }
+
+// ConfigHash returns the hash of the service configuration this container was
+// created from, or "" when Compose did not create it or was too old to stamp
+// the label.
+func (c Container) ConfigHash() string { return c.Labels[LabelConfigHash] }
 
 // Running reports whether the container is currently executing. Docker's
 // "running" state is distinct from "paused", "restarting", "created",

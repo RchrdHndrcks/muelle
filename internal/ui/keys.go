@@ -363,7 +363,7 @@ func (a *App) handleComposeKey(ctx context.Context, key tui.Key) bool {
 	case key.Type == tui.KeyEnter:
 		a.openComposeMenu(project)
 	case key.IsRune('u'):
-		a.runCompose(project, compose.ActionUp)
+		a.previewUp(project)
 	case key.IsRune('d'):
 		a.confirm("Compose down", "Stop and remove everything in "+project.Name+"?", func() {
 			a.runCompose(project, compose.ActionDown)
