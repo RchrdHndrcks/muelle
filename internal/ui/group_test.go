@@ -222,7 +222,7 @@ func TestCollapsedGroupsAreRemembered(t *testing.T) {
 func TestContainersAreIndentedUnderTheirHeading(t *testing.T) {
 	app := groupedApp(t)
 
-	name := app.containerCells(app.rows()[1])[0]
+	name := app.containerCells(app.rows()[1], false)[0]
 
 	if !strings.HasPrefix(name, "  ") {
 		t.Errorf("got %q, want it indented under its heading", name)
@@ -234,7 +234,7 @@ func TestContainersAreNotIndentedWithoutGrouping(t *testing.T) {
 	app := groupedApp(t)
 	app.grouped = false
 
-	name := app.containerCells(app.rows()[1])[0]
+	name := app.containerCells(app.rows()[1], false)[0]
 
 	if strings.HasPrefix(name, " ") {
 		t.Errorf("got %q, want the name flush left", name)
@@ -296,7 +296,7 @@ func TestGroupedRowsDropTheApplicationName(t *testing.T) {
 	names := []string{}
 	for _, row := range app.rows() {
 		if row.Header == nil {
-			names = append(names, strings.TrimSpace(app.containerCells(row)[0]))
+			names = append(names, strings.TrimSpace(app.containerCells(row, false)[0]))
 		}
 	}
 
@@ -317,7 +317,7 @@ func TestFlatRowsKeepTheWholeName(t *testing.T) {
 	app := groupedApp(t)
 	app.grouped = false
 
-	name := app.containerCells(app.rows()[0])[0]
+	name := app.containerCells(app.rows()[0], false)[0]
 
 	if name != "shop-db" {
 		t.Errorf("got %q, want the whole name", name)
@@ -336,7 +336,7 @@ func TestARowNotNamedAfterItsApplicationIsUntouched(t *testing.T) {
 	var found bool
 	for _, row := range app.rows() {
 		if row.Header == nil && row.Container.ID == "odd" {
-			found = strings.TrimSpace(app.containerCells(row)[0]) == "legacy-cart"
+			found = strings.TrimSpace(app.containerCells(row, false)[0]) == "legacy-cart"
 		}
 	}
 	if !found {
