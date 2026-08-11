@@ -43,6 +43,20 @@ func (e containersLoaded) apply(a *App) {
 	// Marks are keyed by ID exactly so they survive this replacement; what
 	// must not survive is a mark whose container has left the list.
 	a.pruneMarks()
+	// Drop the CPU history of containers no longer listed. Each ring is
+	// small, but a host cycling through short-lived containers would grow
+	// the map without bound if nothing ever left it.
+	if len(a.cpuHistory) > 0 {
+		listed := make(map[string]bool, len(e.containers))
+		for _, c := range e.containers {
+			listed[c.ID] = true
+		}
+		for id := range a.cpuHistory {
+			if !listed[id] {
+				delete(a.cpuHistory, id)
+			}
+		}
+	}
 	// Remembered so a row can still be drawn for a service whose container
 	// has been destroyed and not yet replaced.
 	if a.deploys != nil {
@@ -111,6 +125,9 @@ type statsLoaded struct{ stats map[string]docker.Stat }
 
 func (e statsLoaded) apply(a *App) {
 	a.stats = e.stats
+	for id, stat := range e.stats {
+		a.pushCPU(id, stat.CPUPercent)
+	}
 	a.recomputeStatTotals()
 }
 
@@ -134,9 +151,23 @@ func (e statSampled) apply(a *App) {
 			return
 		}
 		a.stats[e.id] = e.stat
+		a.pushCPU(e.id, e.stat.CPUPercent)
 		a.recomputeStatTotals()
 		return
 	}
+}
+
+// pushCPU records one CPU reading for a container. The stats map holds only
+// the latest sample per container, so this is the only place a reading
+// survives the one that replaces it; the CPU column's sparkline is drawn
+// from what is kept here.
+func (a *App) pushCPU(id string, percent float64) {
+	h := a.cpuHistory[id]
+	if h == nil {
+		h = &history{}
+		a.cpuHistory[id] = h
+	}
+	h.push(percent)
 }
 
 // recomputeStatTotals refreshes the host panel's aggregate figures. Docker
