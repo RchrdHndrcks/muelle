@@ -27,6 +27,7 @@ var helpSections = []helpSection{
 		{"1 2 3 4 5", "containers / compose / images / volumes / networks"},
 		{"Tab, → / ←", "cycle views"},
 		{"/", "filter the list"},
+		{"y", "copy the identifier to the clipboard (OSC 52)"},
 		{"Esc", "clear marks, then the filter, or leave the current view"},
 		{"S", "toggle the host metrics panel"},
 		{"Ctrl-r", "refresh now"},
@@ -54,6 +55,7 @@ var helpSections = []helpSection{
 		{"A", "group the list by application"},
 		{"z, Enter on a heading", "fold an application away, or open it"},
 		{"o", "cycle sort: project, cpu, memory, age, state"},
+		{"Y", "copy menu: full ID, name, image, or port"},
 		{"P", "system prune (reclaim disk)"},
 	}},
 	{"Compose", []helpEntry{
