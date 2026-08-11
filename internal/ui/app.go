@@ -24,6 +24,7 @@ const (
 	ViewImages
 	ViewVolumes
 	ViewNetworks
+	ViewEvents
 	viewCount
 )
 
@@ -40,6 +41,8 @@ func (v View) Title() string {
 		return "Volumes"
 	case ViewNetworks:
 		return "Networks"
+	case ViewEvents:
+		return "Events"
 	default:
 		return "?"
 	}
@@ -114,6 +117,9 @@ type App struct {
 	// deploys follows services through being replaced, so a row can say
 	// what is happening to it rather than vanishing.
 	deploys *deploy.Tracker
+	// daemonEvents is the timeline behind the events view, fed by the same
+	// stream the deploy tracker follows.
+	daemonEvents *EventRing
 
 	// Per-view selection and scroll, kept separately so switching tabs
 	// returns you to where you were.
@@ -226,6 +232,7 @@ func New(cfg config.Config, client *docker.Client, screen *tui.Screen, runner *R
 		probes:         newProbeWatcher(cfg),
 		probeResults:   make(map[string]probe.Result),
 		deploys:        deploy.New(deployGrace, deployPatience),
+		daemonEvents:   NewEventRing(eventHistory),
 		grouped:        cfg.GroupContainers,
 		collapsed:      collapsedSet(cfg.CollapsedGroups),
 		marked:         make(map[string]bool),
@@ -510,6 +517,8 @@ func (a *App) currentLength() int {
 		return len(a.filteredVolumes())
 	case ViewNetworks:
 		return len(a.filteredNetworks())
+	case ViewEvents:
+		return len(a.filteredEvents())
 	}
 	return 0
 }

@@ -7,8 +7,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Event is one entry from the daemon's event stream.
@@ -76,14 +78,25 @@ type EventStream struct {
 	err error
 }
 
-// Events streams container lifecycle events from the daemon.
+// Events streams lifecycle events from the daemon.
 //
 // The connection stays open until the context is cancelled or Close is called.
-// Only container events are asked for: the daemon reports images, volumes and
-// networks on the same feed, and filtering at the source costs one parameter.
-func (c *Client) Events(ctx context.Context) (*EventStream, error) {
+// Only the object types muelle shows are asked for — containers, images,
+// volumes and networks. The daemon reports far more on this feed, exec starts
+// and plugin installs among it, and filtering at the source costs one
+// parameter.
+//
+// A non-zero since asks the daemon to replay history from that moment before
+// going live, served from its own in-memory log and delivered in one burst.
+// That is what keeps a freshly opened stream from being blind to everything
+// that happened before it: without the backfill, an events view opened after
+// the crash it was opened to explain would have nothing to say about it.
+func (c *Client) Events(ctx context.Context, since time.Time) (*EventStream, error) {
 	query := url.Values{}
-	query.Set("filters", `{"type":["container"]}`)
+	query.Set("filters", `{"type":["container","image","volume","network"]}`)
+	if !since.IsZero() {
+		query.Set("since", strconv.FormatInt(since.Unix(), 10))
+	}
 
 	body, err := c.do(ctx, http.MethodGet, "/events", query, nil)
 	if err != nil {

@@ -24,7 +24,7 @@ var helpSections = []helpSection{
 		{"j / k, ↓ / ↑", "move selection"},
 		{"g / G", "jump to first / last"},
 		{"Ctrl-d / Ctrl-u", "half page down / up"},
-		{"1 2 3 4 5", "containers / compose / images / volumes / networks"},
+		{"1 2 3 4 5 6", "containers / compose / images / volumes / networks / events"},
 		{"Tab, → / ←", "cycle views"},
 		{"/", "filter the list"},
 		{"y", "copy the identifier to the clipboard (OSC 52)"},
@@ -73,6 +73,10 @@ var helpSections = []helpSection{
 		{"P", "prune unused items"},
 		{"u", "images: show only those no container uses"},
 		{"b", "volumes: back up to a tarball in backup_dir"},
+	}},
+	{"Events", []helpEntry{
+		{"view 6", "the last hour of daemon activity, newest first"},
+		{"/", "filter by type, action or name"},
 	}},
 	{"Log viewer", []helpEntry{
 		{"f", "toggle follow (scrolling up pauses it)"},
