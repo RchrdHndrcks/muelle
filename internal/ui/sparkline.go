@@ -63,18 +63,41 @@ func (h *history) last(n int) []float64 {
 // unchanged.
 var sparkRunes = []rune("▁▂▃▄▅▆▇█")
 
-// Sparkline renders CPU percentages as one block character each, scaled so
-// that 0% is the lowest bar and 100% the full one.
+// Sparkline renders CPU percentages as one block character each, scaled to
+// the row's own range: the highest reading in the window fills the top bar
+// and everything below it sits proportionally, so a quietly idling container
+// at half a percent shows just as much shape as a busy one.
 //
-// Readings past 100% are clamped to the full bar rather than rescaling the
-// axis: a container on a multi-core host can legitimately report several
-// hundred percent, and stretching the scale to fit it would flatten every
-// ordinary reading into the bottom row. A fixed scale keeps every row's
-// sparkline comparable with its neighbours', which is what a column is for.
+// A fixed 0-100% axis — which is what every other sparkline drawing tool
+// settles on — turns out to be the wrong scale for this column: an idle
+// host's readings all land in the bottom bar, and a whole row of identical
+// lowest bars is a row of dashes, which reads as broken. Scaling to the
+// window's own maximum keeps the same reading visible regardless of the
+// host's load; the current figure sits beside the bars for the absolute
+// level, and per-row scaling keeps that figure honest across neighbours.
+//
+// Readings are clamped to the scale's ends rather than rescaling on their
+// own: a negative glitch or a multi-core burst must not stretch the axis
+// and flatten the rest of the window.
 func Sparkline(values []float64) string {
+	if len(values) == 0 {
+		return ""
+	}
+	max := values[0]
+	for _, value := range values[1:] {
+		if value > max {
+			max = value
+		}
+	}
 	var b strings.Builder
 	for _, value := range values {
-		index := int(value * float64(len(sparkRunes)) / 100)
+		if max <= 0 {
+			// Every reading is zero: nothing has run, so the row stays
+			// at the lowest bar rather than panicking on a zero axis.
+			b.WriteRune(sparkRunes[0])
+			continue
+		}
+		index := int(value / max * float64(len(sparkRunes)))
 		if index < 0 {
 			index = 0
 		}

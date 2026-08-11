@@ -62,9 +62,24 @@ func TestHistoryNilHasNoSamples(t *testing.T) {
 	}
 }
 
-func TestSparklineScalesZeroToHundred(t *testing.T) {
+// The scale follows the row: the window's highest reading is the full bar,
+// so a quiet container's small movements are as visible as a busy one's.
+func TestSparklineScalesToTheRowsOwnRange(t *testing.T) {
 	if got := Sparkline([]float64{0, 50, 100}); got != "▁▅█" {
 		t.Errorf("got %q, want %q", got, "▁▅█")
+	}
+	// The reading that says a row is busy is the same on an idle host:
+	// the bars must differ, not render a row of dashed lowest bars.
+	if got := Sparkline([]float64{0.4, 0.5, 0.6}); got != "▆▇█" {
+		t.Errorf("got %q, want %q", got, "▆▇█")
+	}
+}
+
+// A window of nothing but zeroes must render as the lowest bar rather than
+// dividing by a zero axis.
+func TestSparklineAllZeroesStayAtTheBottom(t *testing.T) {
+	if got := Sparkline([]float64{0, 0, 0}); got != "▁▁▁" {
+		t.Errorf("got %q, want %q", got, "▁▁▁")
 	}
 }
 
