@@ -1,6 +1,8 @@
 package compose
 
 import (
+	"context"
+	"fmt"
 	"os/exec"
 )
 
@@ -174,6 +176,27 @@ func (b Binary) Command(project Project, action Action, services ...string) []st
 		argv = append(argv, "--no-deps")
 	}
 	return append(argv, services...)
+}
+
+// RunCaptured executes an argv built by Command with its output captured
+// rather than attached to a terminal.
+//
+// The TUI hands the terminal over and lets Compose talk to the user directly;
+// an unattended caller — the auto-deploy daemon — has no terminal to hand
+// over and nobody watching, so the output is collected instead, to be quoted
+// in an error when something fails. Stdout and stderr are combined because
+// Compose spreads its diagnostics across both and only their interleaving
+// tells the story.
+func RunCaptured(ctx context.Context, argv []string) (string, error) {
+	if len(argv) == 0 {
+		return "", fmt.Errorf("compose: empty command")
+	}
+	command := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	// No stdin: a prompt from Compose must fail rather than hang a daemon
+	// forever waiting for an answer nobody is there to give.
+	command.Stdin = nil
+	output, err := command.CombinedOutput()
+	return string(output), err
 }
 
 // Actions lists the actions offered for a project, in menu order. A project
